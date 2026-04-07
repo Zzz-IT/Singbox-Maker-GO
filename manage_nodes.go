@@ -92,7 +92,7 @@ func DeleteNode() {
 	target := validInbounds[idx-1]
 	targetTag := target["tag"].(string)
 
-	if ReadInput(fmt.Sprintf("%s确认删除节点 [%s] 吗？(y/N): %s", ColorYellow, targetTag, ColorReset)) == "y" {
+	if ReadInput(fmt。Sprintf("%s确认删除节点 [%s] 吗？(y/N): %s", ColorYellow, targetTag, ColorReset)) == "y" {
 		// 重新构建 inbounds 切片
 		var newInbounds []interface{}
 		for _, v := range inbounds {
@@ -104,8 +104,18 @@ func DeleteNode() {
 		}
 		root["inbounds"] = newInbounds
 		WriteConfig(root)
-		// === [新增] 同步删除 Clash 节点 ===
-		RemoveNodeFromYaml(targetName) // targetName 可以从 Metadata 里读取出来
+		
+		// === [修复] 同步删除 Clash 节点 ===
+		// 需要从 Metadata 获取真实的 node name
+		metadata := ReadMetadata()
+		targetName := targetTag
+		if meta, ok := metadata[targetTag].(map[string]interface{}); ok {
+			if n, ok := meta["name"].(string); ok { 
+				targetName = n 
+			}
+		}
+		RemoveNodeFromYaml(targetName) 
+		
 		LogSuccess("节点 %s 已删除", targetTag)
 		ManageService("restart")
 	}
@@ -224,7 +234,8 @@ func ViewNodes() {
 			if s, ok := meta["shortId"].(string); ok { sid = s }
 		}
 
-		fmt。Printf("─────────────────────────────────────────────\n")
+		// [修复] 将全角的 fmt。Printf 替换为半角的 fmt.Printf
+		fmt.Printf("─────────────────────────────────────────────\n")
 		fmt.Printf("  节点: %s%s%s (%s) @ 端口 %d\n", ColorCyan, name, ColorReset, nodeType, port)
 
 		// 2. 深入 JSON 提取核心参数
