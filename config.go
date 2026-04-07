@@ -42,7 +42,7 @@ func AppendInbound(newInbound map[string]interface{}) error {
 
 	// 写回文件
 	out, _ := json.MarshalIndent(root, "", "  ")
-	return os.WriteFile(ConfigFile, out, 0644)
+	return os.WriteFile(ConfigFile, out, 0600)
 }
 
 // SaveMetadata 保存元数据，用于后续删除或查看节点
@@ -56,6 +56,12 @@ func SaveMetadata(tag string, meta map[string]interface{}) {
 	}
 
 	root[tag] = meta
-	out, _ := json.MarshalIndent(root, "", "  ")
-	os.WriteFile(MetadataFile, out, 0644)
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err == nil {
+		if writeErr := os.WriteFile(MetadataFile, out, 0600); writeErr != nil {
+			LogError("保存元数据文件失败，部分显示信息可能会丢失: %v", writeErr)
+		}
+	} else {
+		LogError("元数据 JSON 编码失败: %v", err)
+	}
 }

@@ -31,7 +31,7 @@ func WriteConfig(root map[string]interface{}) error {
 
 	tmpFile := ConfigFile + ".tmp"
 	// 1. 先写入临时文件
-	if err := os.WriteFile(tmpFile, out, 0644); err != nil {
+	if err := os.WriteFile(tmpFile, out, 0600); err != nil {
 		return fmt.Errorf("写入临时配置失败: %v", err)
 	}
 
@@ -78,9 +78,13 @@ func DeleteNode() {
 
 	fmt.Println("─────────────────────────────────────────────")
 	for i, inbound := range validInbounds {
-		tag := inbound["tag"].(string)
-		nodeType := inbound["type"].(string)
-		port := int(inbound["listen_port"].(float64))
+		tag, okTag := inbound["tag"].(string)
+		nodeType, okType := inbound["type"].(string)
+		portF, okPort := inbound["listen_port"].(float64)
+		if !okTag || !okType || !okPort {
+			continue // 数据结构损坏，跳过该异常节点防止崩溃
+		}
+		port := int(portF)
 		fmt.Printf("  %s%d)%s %s (%s) @ 端口 %d\n", ColorCyan, i+1, ColorReset, tag, nodeType, port)
 	}
 	fmt.Printf("  %s99)%s 删除所有节点\n", ColorRed, ColorReset)
@@ -93,11 +97,23 @@ func DeleteNode() {
 
 	if choice == "99" {
 		if ReadInput(ColorYellow+"确定要清空所有常规节点吗？(y/N): "+ColorReset) == "y" {
-			// 保留出站和路由，清空入站
-			root["inbounds"] = []interface{}{}
+			// 【修复 1：保留出站和路由，仅清空常规入站，保留 Argo 隧道入站】
+			var argoInbounds []interface{}
+			for _, v := range inbounds {
+				if inbound, isMap := v.(map[string]interface{}); isMap {
+					if strings.HasPrefix(inbound["tag"].(string), "argo_") {
+						argoInbounds = append(argoInbounds, inbound)
+					}
+				}
+			}
+
+			root["inbounds"] = argoInbounds
 			WriteConfig(root)
-			os.WriteFile(MetadataFile, []byte("{}"), 0644) // 清空元数据
-			LogSuccess("所有节点已清空")
+
+			// 清空常规节点元数据 (将权限由 0644 改为更安全的 0600)
+			os.WriteFile(MetadataFile, []byte("{}"), 0600)
+
+			LogSuccess("所有常规节点已清空，成功保留了已配置的 Argo 隧道")
 			ManageService("restart")
 		}
 		return
@@ -110,8 +126,11 @@ func DeleteNode() {
 	}
 
 	target := validInbounds[idx-1]
-	targetTag := target["tag"].(string)
-
+	targetTag, ok := target["tag"].(string)
+	if !ok {
+		LogError("目标节点数据异常，无法执行删除操作")
+		return
+	}
 	if ReadInput(fmt.Sprintf("%s确认删除节点 [%s] 吗？(y/N): %s", ColorYellow, targetTag, ColorReset)) == "y" {
 		// 重新构建 inbounds 切片
 		var newInbounds []interface{}
@@ -175,8 +194,12 @@ func ModifyPort() {
 	}
 
 	for i, inbound := range validInbounds {
-		tag := inbound["tag"].(string)
-		fmt.Printf("  %s%d)%s %s @ 端口 %.0f\n", ColorCyan, i+1, ColorReset, tag, inbound["listen_port"].(float64))
+		tag, okTag := inbound["tag"].(string)
+		portF, okPort := inbound["listen_port"].(float64)
+		if !okTag || !okPort {
+			continue
+		}
+		fmt.Printf("  %s%d)%s %s @ 端口 %.0f\n", ColorCyan, i+1, ColorReset, tag, portF)
 	}
 
 	choice := ReadInput("请输入要修改的节点编号 (0返回): ")
@@ -190,8 +213,13 @@ func ModifyPort() {
 	}
 
 	target := validInbounds[idx-1]
-	oldPort := int(target["listen_port"].(float64))
-	oldTag := target["tag"].(string)
+	oldPortF, ok1 := target["listen_port"].(float64)
+	oldTag, ok2 := target["tag"].(string)
+	if !ok1 || !ok2 {
+		LogError("目标节点数据异常，无法修改端口")
+		return
+	}
+	oldPort := int(oldPortF)
 
 	newPort := getValidPort()
 
@@ -241,7 +269,7 @@ func ModifyPort() {
 		delete(metadata, oldTag) // 删除旧 tag
 
 		outMeta, _ := json.MarshalIndent(metadata, "", "  ")
-		os.WriteFile(MetadataFile, outMeta, 0644)
+		os.WriteFile(MetadataFile, outMeta, 0600)
 	}
 
 	// --- 同步更新 clash.yaml ---
@@ -296,14 +324,17 @@ func ViewNodes() {
 			continue
 		}
 
-		tag := inbound["tag"].(string)
-		if strings.HasPrefix(tag, "argo_") {
-			continue // 过滤掉 Argo 隧道节点
+		tag, okTag := inbound["tag"].(string)
+		if !okTag || strings.HasPrefix(tag, "argo_") {
+			continue // 过滤掉异常节点和 Argo 隧道节点
 		}
 
-		nodeType := inbound["type"].(string)
-		port := int(inbound["listen_port"].(float64))
-
+		nodeType, okType := inbound["type"].(string)
+		portF, okPort := inbound["listen_port"].(float64)
+		if !okType || !okPort {
+			continue // 数据缺失则跳过，保证其他健康节点能正常展示
+		}
+		port := int(portF)
 		// 1. 从 Metadata 获取用户友好的节点名称和 Reality 公钥
 		name := tag
 		var pbk, sid string

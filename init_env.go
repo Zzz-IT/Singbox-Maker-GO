@@ -15,12 +15,16 @@ func InitRuntime() {
 		// 检查是否已经安装 gcompat，如果没有则静默安装
 		if err := exec.Command("apk", "info", "-e", "gcompat").Run(); err != nil {
 			LogInfo("检测到 Alpine Linux，正在静默安装兼容性依赖 (gcompat)...")
-			exec.Command("apk", "add", "--no-cache", "gcompat", "ca-certificates", "tzdata").Run()
+			if err := exec.Command("apk", "add", "--no-cache", "gcompat", "ca-certificates", "tzdata").Run(); err != nil {
+				LogError("Alpine 依赖安装失败，可能导致核心无法运行: %v", err)
+			}
 		}
 	}
 
 	// 3. 确保配置目录和基础配置文件存在
-	os.MkdirAll("/usr/local/etc/sing-box", 0755)
+	if err := os.MkdirAll("/usr/local/etc/sing-box", 0755); err != nil {
+		LogError("创建配置目录失败，请检查系统权限: %v", err)
+	}
 	if _, err := os.Stat(ConfigFile); os.IsNotExist(err) {
 		os.WriteFile(ConfigFile, []byte(`{"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"rules":[],"final":"direct"}}`), 0644)
 	}
