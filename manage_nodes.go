@@ -160,3 +160,130 @@ func ModifyPort() {
 	LogSuccess("端口已修改: %d -> %d", oldPort, newPort)
 	ManageService("restart")
 }
+// ReadMetadata 安全读取 metadata.json 助手函数
+func ReadMetadata() map[string]interface{} {
+	data, err := os.ReadFile(MetadataFile)
+	var root map[string]interface{}
+	if err == nil && len(data) > 0 {
+		json.Unmarshal(data, &root)
+	} else {
+		root = make(map[string]interface{})
+	}
+	return root
+}
+
+// ViewNodes 打印所有节点信息与分享链接（无 Base64 纯净版）
+func ViewNodes() {
+	ClearScreen()
+	fmt.Print("\n\n")
+	LogInfo(" 节点信息与分享链接 ")
+
+	root, err := ReadConfig()
+	if err != nil {
+		LogError("读取配置失败: %v", err)
+		return
+	}
+
+	metadata := ReadMetadata()
+
+	inbounds, ok := root["inbounds"].([]interface{})
+	if !ok || len(inbounds) == 0 {
+		LogWarn("当前没有任何节点")
+		return
+	}
+
+	serverIP := GetPublicIP()
+	linkIP := serverIP
+	if strings.Contains(serverIP, ":") {
+		linkIP = "[" + serverIP + "]" // IPv6 安全包裹
+	}
+
+	count := 0
+	for _, v := range inbounds {
+		inbound, isMap := v.(map[string]interface{})
+		if !isMap {
+			continue
+		}
+
+		tag := inbound["tag"].(string)
+		if strings.HasPrefix(tag, "argo_") {
+			continue // 过滤掉 Argo 隧道节点
+		}
+
+		nodeType := inbound["type"].(string)
+		port := int(inbound["listen_port"].(float64))
+
+		// 1. 从 Metadata 获取用户友好的节点名称和 Reality 公钥
+		name := tag
+		var pbk, sid string
+		if meta, ok := metadata[tag].(map[string]interface{}); ok {
+			if n, ok := meta["name"].(string); ok { name = n }
+			if p, ok := meta["publicKey"].(string); ok { pbk = p }
+			if s, ok := meta["shortId"].(string); ok { sid = s }
+		}
+
+		fmt。Printf("─────────────────────────────────────────────\n")
+		fmt.Printf("  节点: %s%s%s (%s) @ 端口 %d\n", ColorCyan, name, ColorReset, nodeType, port)
+
+		// 2. 深入 JSON 提取核心参数
+		var uuid, password, method, username string
+		if users, ok := inbound["users"].([]interface{}); ok && len(users) > 0 {
+			if u, ok := users[0].(map[string]interface{}); ok {
+				if val, ok := u["uuid"].(string); ok { uuid = val }
+				if val, ok := u["password"].(string); ok { password = val }
+				if val, ok := u["username"].(string); ok { username = val }
+			}
+		}
+		if m, ok := inbound["method"].(string); ok { method = m }
+
+		sni := "www.apple.com"
+		path := "/"
+		if tls, ok := inbound["tls"].(map[string]interface{}); ok {
+			if val, ok := tls["server_name"].(string); ok { sni = val }
+		}
+		if transport, ok := inbound["transport"].(map[string]interface{}); ok {
+			if val, ok := transport["path"].(string); ok { path = val }
+		}
+
+		safeName := url.QueryEscape(name)
+		safePath := url.QueryEscape(path)
+		var urlStr string
+
+		// 3. 动态拼接 URL
+		switch nodeType {
+		case "vless":
+			if tls, ok := inbound["tls"].(map[string]interface{}); ok && tls["enabled"] == true {
+				if _, isReality := tls["reality"]; isReality {
+					urlStr = fmt.Sprintf("vless://%s@%s:%d?security=reality&encryption=none&pbk=%s&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=%s&sid=%s#%s", uuid, linkIP, port, pbk, sni, sid, safeName)
+				} else {
+					urlStr = fmt.Sprintf("vless://%s@%s:%d?security=tls&encryption=none&type=ws&host=%s&path=%s&sni=%s&insecure=1#%s", uuid, linkIP, port, sni, safePath, sni, safeName)
+				}
+			} else {
+				urlStr = fmt.Sprintf("vless://%s@%s:%d?encryption=none&type=tcp#%s", uuid, linkIP, port, safeName)
+			}
+		case "trojan":
+			urlStr = fmt.Sprintf("trojan://%s@%s:%d?security=tls&type=ws&host=%s&path=%s&sni=%s&allowInsecure=1#%s", password, linkIP, port, sni, safePath, sni, safeName)
+		case "hysteria2":
+			urlStr = fmt.Sprintf("hysteria2://%s@%s:%d?sni=%s&insecure=1#%s", password, linkIP, port, sni, safeName)
+		case "tuic":
+			urlStr = fmt.Sprintf("tuic://%s:%s@%s:%d?sni=%s&alpn=h3&congestion_control=bbr&udp_relay_mode=native&allow_insecure=1#%s", uuid, password, linkIP, port, sni, safeName)
+		case "anytls":
+			urlStr = fmt.Sprintf("anytls://%s@%s:%d?security=tls&sni=%s&insecure=1&allowInsecure=1&type=tcp#%s", password, linkIP, port, sni, safeName)
+		case "shadowsocks":
+			urlStr = fmt.Sprintf("ss://%s@%s:%d#%s", url.QueryEscape(method+":"+password), linkIP, port, safeName)
+		case "socks":
+			urlStr = fmt.Sprintf("地址: %s:%d | 用户: %s | 密码: %s", linkIP, port, username, password)
+		}
+
+		if urlStr != "" {
+			fmt.Printf("  链接: %s%s%s\n", ColorYellow, urlStr, ColorReset)
+		}
+		count++
+	}
+
+	if count == 0 {
+		LogWarn("未找到常规节点")
+	} else {
+		fmt.Printf("─────────────────────────────────────────────\n")
+	}
+}
