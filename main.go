@@ -6,8 +6,8 @@ import (
 
 func main() {
 	// 1. 拦截命令行参数 (实现快捷部署)
-	if len(os。Args) > 1 {
-		switch os。Args[1] {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
 		case "start":
 			ManageService("start")
 		case "stop":
@@ -15,7 +15,7 @@ func main() {
 		case "restart":
 			ManageService("restart")
 		default:
-			LogError("未知的命令参数: %s", os。Args[1])
+			LogError("未知的命令参数: %s", os.Args[1])
 		}
 		return
 	}
