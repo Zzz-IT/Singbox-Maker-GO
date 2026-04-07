@@ -56,7 +56,7 @@ func StartArgoTunnel(port int, tunnelType string, token string) (string, error) 
 		return "", err
 	}
 	
-	if err := cmd。Start(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return "", err
 	}
 
