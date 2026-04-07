@@ -104,6 +104,8 @@ func DeleteNode() {
 		}
 		root["inbounds"] = newInbounds
 		WriteConfig(root)
+		// === [新增] 同步删除 Clash 节点 ===
+		RemoveNodeFromYaml(targetName) // targetName 可以从 Metadata 里读取出来
 		LogSuccess("节点 %s 已删除", targetTag)
 		ManageService("restart")
 	}
