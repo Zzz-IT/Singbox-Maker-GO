@@ -38,49 +38,32 @@ func InstallCloudflared() bool {
 	return true
 }
 
-// StartArgoTunnel 后台启动隧道并提取域名 (不受 Go 进程退出影响)
+// StartArgoTunnel 依赖 Systemd/OpenRC 启动隧道并提取域名，提供极致稳定性
 func StartArgoTunnel(port int, tunnelType string, token string) (string, error) {
-	LogInfo("正在启动 Argo 隧道 (目标端口: %d)...", port)
+	LogInfo("正在配置 Argo 隧道系统守护服务 (端口: %d)...", port)
+
+	logFile := fmt.Sprintf("/usr/local/etc/sing-box/argo_%d.log", port)
+	os.Remove(logFile) // 清理旧日志，确保抓取最新域名
+
+	// 预创建日志文件防止权限报错
+	if f, err := os.Create(logFile); err == nil {
+		f.Close()
+		os.Chmod(logFile, 0666)
+	}
+
+	// 1. 生成并启动系统服务
+	err := createAndStartArgoService(port, tunnelType, token, logFile)
+	if err != nil {
+		return "", err
+	}
 
 	if tunnelType == "fixed" {
-		// 【修复】直接使用 exec.Command 传参，避免 sh -c 导致的 Shell 注入风险
-		cmd := exec.Command(CloudflaredBin, "tunnel", "run", "--token", token)
-		// 脱离终端标准输出和错误输出，实现静默后台运行
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-
-		if err := cmd.Start(); err != nil {
-			return "", fmt.Errorf("启动固定隧道失败: %v", err)
-		}
 		time.Sleep(2 * time.Second)
-		return "", nil
+		return "", nil // 固定隧道直接返回即可
 	}
 
-	// 临时隧道逻辑：
-	// 【修复】将日志存放路径从危险的 /tmp 移动到你的专属配置目录下，防止符号链接攻击
-	logFile := fmt.Sprintf("/usr/local/etc/sing-box/argo_%d.log", port)
-	os.Remove(logFile)
-
-	// 安全创建并打开日志文件，用于重定向子进程的输出
-	outFile, err := os.Create(logFile)
-	if err != nil {
-		return "", fmt.Errorf("创建临时日志文件失败: %v", err)
-	}
-
-	// 【修复】不使用 sh -c，直接传递参数防止注入
-	urlParam := fmt.Sprintf("http://127.0.0.1:%d", port)
-	cmd := exec.Command(CloudflaredBin, "tunnel", "--url", urlParam)
-	cmd.Stdout = outFile
-	cmd.Stderr = outFile
-
-	if err := cmd.Start(); err != nil {
-		outFile.Close()
-		return "", fmt.Errorf("启动临时隧道失败: %v", err)
-	}
-	// 父进程关闭文件句柄，子进程会继续持有并写入
-	outFile.Close()
-
-	// 轮询抓取 trycloudflare 域名 (最长等待 15 秒)
+	// 2. 轮询抓取 trycloudflare 临时免费域名
+	LogInfo("正在等待 Cloudflare 分配域名...")
 	re := regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
 	for i := 0; i < 30; i++ {
 		time.Sleep(500 * time.Millisecond)
@@ -343,12 +326,10 @@ func ShowArgoMenu() {
 			DeleteArgoNode()
 			Pause("按回车键继续...")
 		case "5", "05":
-			exec.Command("pkill", "-f", "cloudflared").Run()
-			LogSuccess("已向所有 cloudflared 进程发送停止信号")
+			StopAllArgoTunnels()
 			Pause("按回车键继续...")
 		case "6", "06":
-			// 简单的重启逻辑：杀掉全部进程，然后系统重启或者用户手动进入节点详情触发重连
-			LogWarn("暂不支持一键热重启，若遇到断连请直接重启 sing-box 服务。")
+			RestartAllArgoTunnels()
 			Pause("按回车键继续...")
 		case "0", "00":
 			return
@@ -449,12 +430,21 @@ func DeleteArgoNode() {
 			WriteConfig(conf)
 		}
 
-		// 2. 杀掉对应的 cloudflared 进程
-		if targetMeta["tunnel_type"] == "fixed" {
-			exec.Command("pkill", "-f", targetMeta["token"].(string)).Run()
-		} else {
-			exec.Command("pkill", "-f", fmt.Sprintf("127.0.0.1:%.0f", targetMeta["local_port"])).Run()
+		// 2. 优雅停止并注销对应的 Argo 系统服务
+		serviceName := fmt.Sprintf("argo-%.0f", targetMeta["local_port"])
+		if InitSystem == "systemd" {
+			exec.Command("systemctl", "stop", serviceName).Run()
+			exec.Command("systemctl", "disable", serviceName).Run()
+			os.Remove(fmt.Sprintf("/etc/systemd/system/%s.service", serviceName))
+			exec.Command("systemctl", "daemon-reload").Run()
+		} else if InitSystem == "openrc" {
+			exec.Command("rc-service", serviceName, "stop").Run()
+			exec.Command("rc-update", "del", serviceName, "default").Run()
+			os.Remove(fmt.Sprintf("/etc/init.d/%s", serviceName))
 		}
+
+		// 清除隧道日志文件
+		os.Remove(fmt.Sprintf("/usr/local/etc/sing-box/argo_%.0f.log", targetMeta["local_port"]))
 
 		// 3. 从元数据中删除
 		delete(metaRoot, targetTag)
@@ -464,4 +454,129 @@ func DeleteArgoNode() {
 		LogSuccess("节点已彻底删除")
 		ManageService("restart")
 	}
+}
+
+// ==========================================
+// 系统服务级隧道管理模块 (守护进程 + GC优化)
+// ==========================================
+
+// createAndStartArgoService 动态生成并启动系统服务，包含 GC 内存控制限制
+func createAndStartArgoService(port int, tunnelType string, token string, logFile string) error {
+	serviceName := fmt.Sprintf("argo-%d", port)
+	var cmdStr string
+
+	if tunnelType == "fixed" {
+		cmdStr = fmt.Sprintf("%s tunnel run --token %s", CloudflaredBin, token)
+	} else {
+		cmdStr = fmt.Sprintf("%s tunnel --url http://127.0.0.1:%d", CloudflaredBin, port)
+	}
+
+	if InitSystem == "systemd" {
+		servicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
+		serviceContent := fmt.Sprintf(`[Unit]
+Description=Argo Tunnel for Port %d
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+Environment="GOMEMLIMIT=50MiB"
+Environment="GOGC=50"
+ExecStart=%s
+StandardOutput=append:%s
+StandardError=append:%s
+
+[Install]
+WantedBy=multi-user.target
+`, port, cmdStr, logFile, logFile)
+
+		os.WriteFile(servicePath, []byte(serviceContent), 0644)
+		exec.Command("systemctl", "daemon-reload").Run()
+		exec.Command("systemctl", "enable", serviceName).Run()
+		if err := exec.Command("systemctl", "restart", serviceName).Run(); err != nil {
+			return fmt.Errorf("systemd 启动失败: %v", err)
+		}
+	} else if InitSystem == "openrc" {
+		servicePath := fmt.Sprintf("/etc/init.d/%s", serviceName)
+		serviceContent := fmt.Sprintf(`#!/sbin/openrc-run
+description="Argo Tunnel for Port %d"
+command="/bin/sh"
+command_args="-c 'GOMEMLIMIT=50MiB GOGC=50 exec %s >> %s 2>&1'"
+command_background="yes"
+pidfile="/run/%s.pid"
+
+depend() {
+    need net
+}
+`, port, cmdStr, logFile, serviceName)
+
+		os.WriteFile(servicePath, []byte(serviceContent), 0755)
+		exec.Command("rc-update", "add", serviceName, "default").Run()
+		if err := exec.Command("rc-service", serviceName, "restart").Run(); err != nil {
+			return fmt.Errorf("openrc 启动失败: %v", err)
+		}
+	} else {
+		return fmt.Errorf("未知的初始化系统，无法创建服务")
+	}
+
+	return nil
+}
+
+// RestartAllArgoTunnels 重新启动所有已保存的 Argo 隧道系统服务
+func RestartAllArgoTunnels() {
+	data, _ := os.ReadFile(ArgoMetadataFile)
+	var metaRoot map[string]interface{}
+	json.Unmarshal(data, &metaRoot)
+
+	if len(metaRoot) == 0 {
+		LogWarn("没有找到有效的 Argo 隧道配置。")
+		return
+	}
+
+	LogInfo("正在通过系统服务重新启动隧道...")
+	successCount := 0
+	for _, v := range metaRoot {
+		meta := v.(map[string]interface{})
+		port := int(meta["local_port"].(float64))
+		serviceName := fmt.Sprintf("argo-%d", port)
+
+		var err error
+		if InitSystem == "systemd" {
+			err = exec.Command("systemctl", "restart", serviceName).Run()
+		} else if InitSystem == "openrc" {
+			err = exec.Command("rc-service", serviceName, "restart").Run()
+		}
+
+		if err == nil {
+			LogSuccess("隧道服务 [%s] 重启成功！", serviceName)
+			successCount++
+		}
+	}
+	LogSuccess("操作完成！成功重启 %d 个隧道服务。", successCount)
+}
+
+// StopAllArgoTunnels 停止所有已保存的 Argo 隧道系统服务
+func StopAllArgoTunnels() {
+	data, _ := os.ReadFile(ArgoMetadataFile)
+	var metaRoot map[string]interface{}
+	json.Unmarshal(data, &metaRoot)
+
+	if len(metaRoot) == 0 {
+		LogWarn("没有正在运行的 Argo 隧道。")
+		return
+	}
+
+	for _, v := range metaRoot {
+		meta := v.(map[string]interface{})
+		port := int(meta["local_port"].(float64))
+		serviceName := fmt.Sprintf("argo-%d", port)
+
+		if InitSystem == "systemd" {
+			exec.Command("systemctl", "stop", serviceName).Run()
+		} else if InitSystem == "openrc" {
+			exec.Command("rc-service", serviceName, "stop").Run()
+		}
+	}
+	LogSuccess("已向所有系统级隧道服务发送停止指令！")
 }
