@@ -95,9 +95,21 @@ func ShowAddNodeMenu() {
 	choice := ReadInput("     请选择协议 > ")
 	switch choice {
 	case "1", "01":
-		LogInfo("准备进入 VLESS-Reality 部署流程 (这里你可以开始写 Go 的 JSON 构造了)")
+		AddVLESSReality()
+	case "2", "02":
+		AddVLESSWSTLS()
+	case "5", "05":
+		AddHysteria2()
+	case "7", "07":
+		AddShadowsocks()
 	case "0", "00":
 		return
+	default:
+		LogWarn("该协议尚未在 Go 版本中实装")
+		return
 	}
+	
+	// 操作完成后自动重启服务应用配置
+	ManageService("restart")
 	Pause("操作完成，按回车键继续...")
 }
