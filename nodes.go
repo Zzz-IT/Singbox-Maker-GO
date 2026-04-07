@@ -146,10 +146,9 @@ func AddVLESSWSTLS() {
 		wsPath = "/" + wsPath
 	}
 
-	// [新增] 询问 CDN 与 检查 ECH 开关
+	// 询问 CDN 与 检查 ECH 开关
 	useCDN := ReadInput("此节点是否准备套用 Cloudflare CDN (小黄云)? (y/N): ") == "y"
 	echEnabled := GetClientECH()
-	sniParam := serverName
 
 	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
 	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
@@ -181,17 +180,24 @@ func AddVLESSWSTLS() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
 		serverIP := GetPublicIP()
-		linkIP := FormatIPForURI(serverIP)
+
+		// 逻辑判定：如果是 CDN 节点，连接地址用域名；否则用 IP
+		finalAddr := serverIP
+		insecure := true
+		if useCDN {
+			finalAddr = serverName
+			insecure = false
+		}
 
 		clashProxy := map[string]interface{}{
 			"name":             name,
 			"type":             "vless",
-			"server":           serverIP,
+			"server":           finalAddr,
 			"port":             port,
 			"uuid":             uuid,
 			"tls":              true,
 			"udp":              true,
-			"skip-cert-verify": true,
+			"skip-cert-verify": insecure,
 			"network":          "ws",
 			"servername":       serverName,
 			"ws-opts": map[string]interface{}{
@@ -202,26 +208,33 @@ func AddVLESSWSTLS() {
 			},
 		}
 
-		// [核心逻辑] 如果是 CDN 节点且 ECH 开启
+		// 处理 ECH 注入与链接 SNI
+		finalSni := serverName
 		if useCDN && echEnabled {
 			clashProxy["client-fingerprint"] = "chrome"
 			clashProxy["ech-opts"] = map[string]interface{}{
 				"enable":            true,
 				"query-server-name": "cloudflare-ech.com",
 			}
-			sniParam = "cloudflare-ech.com"
+			finalSni = "cloudflare-ech.com"
 		}
 
 		AddNodeToYaml(clashProxy)
 
-		link := fmt.Sprintf("vless://%s@%s:%d?security=tls&encryption=none&type=ws&host=%s&path=%s&sni=%s&insecure=1#%s",
-			uuid, linkIP, port, serverName, url.QueryEscape(wsPath), sniParam, url.QueryEscape(name))
+		// 链接地址处理：如果是 IP 则进行 IPv6 格式化
+		linkAddr := finalAddr
+		if !useCDN {
+			linkAddr = FormatIPForURI(serverIP)
+		}
 
-		LogSuccess("节点 [%s] 添加成功", name)
+		link := fmt.Sprintf("vless://%s@%s:%d?security=tls&encryption=none&type=ws&host=%s&path=%s&sni=%s&fp=chrome&insecure=%d#%s",
+			uuid, linkAddr, port, serverName, url.QueryEscape(wsPath), finalSni, map[bool]int{true: 1, false: 0}[insecure], url.QueryEscape(name))
+
+		// 修复：在这里使用 link 和 ColorCyan
+		LogSuccess("节点 [%s] 添加成功\n%s链接: %s%s", name, ColorYellow, ColorCyan, link)
 		if useCDN && echEnabled {
 			fmt.Printf("%s(已开启客户端 ECH 注入保护)%s\n", ColorYellow, ColorReset)
 		}
-		fmt.Printf("链接: %s\n%s", ColorCyan, link)
 	}
 }
 
@@ -247,10 +260,8 @@ func AddTrojanWSTLS() {
 		wsPath = "/" + wsPath
 	}
 
-	// [新增] 询问 CDN 与 检查 ECH 开关
 	useCDN := ReadInput("此节点是否准备套用 Cloudflare CDN (小黄云)? (y/N): ") == "y"
 	echEnabled := GetClientECH()
-	sniParam := serverName
 
 	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
 	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
@@ -282,16 +293,22 @@ func AddTrojanWSTLS() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
 		serverIP := GetPublicIP()
-		linkIP := FormatIPForURI(serverIP)
+
+		finalAddr := serverIP
+		insecure := true
+		if useCDN {
+			finalAddr = serverName
+			insecure = false
+		}
 
 		clashProxy := map[string]interface{}{
 			"name":             name,
 			"type":             "trojan",
-			"server":           serverIP,
+			"server":           finalAddr,
 			"port":             port,
 			"password":         password,
 			"udp":              true,
-			"skip-cert-verify": true,
+			"skip-cert-verify": insecure,
 			"network":          "ws",
 			"sni":              serverName,
 			"ws-opts": map[string]interface{}{
@@ -302,26 +319,30 @@ func AddTrojanWSTLS() {
 			},
 		}
 
-		// [核心逻辑] 如果是 CDN 节点且 ECH 开启
+		finalSni := serverName
 		if useCDN && echEnabled {
 			clashProxy["client-fingerprint"] = "chrome"
 			clashProxy["ech-opts"] = map[string]interface{}{
 				"enable":            true,
 				"query-server-name": "cloudflare-ech.com",
 			}
-			sniParam = "cloudflare-ech.com"
+			finalSni = "cloudflare-ech.com"
 		}
 
 		AddNodeToYaml(clashProxy)
 
-		link := fmt.Sprintf("trojan://%s@%s:%d?security=tls&type=ws&host=%s&path=%s&sni=%s&allowInsecure=1#%s",
-			password, linkIP, port, serverName, url.QueryEscape(wsPath), sniParam, url.QueryEscape(name))
+		linkAddr := finalAddr
+		if !useCDN {
+			linkAddr = FormatIPForURI(serverIP)
+		}
 
-		LogSuccess("节点 [%s] 添加成功", name)
+		link := fmt.Sprintf("trojan://%s@%s:%d?security=tls&type=ws&host=%s&path=%s&sni=%s&fp=chrome&allowInsecure=%d#%s",
+			password, linkAddr, port, serverName, url.QueryEscape(wsPath), finalSni, map[bool]int{true: 1, false: 0}[insecure], url.QueryEscape(name))
+
+		LogSuccess("节点 [%s] 添加成功\n%s链接: %s%s", name, ColorYellow, ColorCyan, link)
 		if useCDN && echEnabled {
 			fmt.Printf("%s(已开启客户端 ECH 注入保护)%s\n", ColorYellow, ColorReset)
 		}
-		fmt.Printf("链接: %s\n%s", ColorCyan, link)
 	}
 }
 
