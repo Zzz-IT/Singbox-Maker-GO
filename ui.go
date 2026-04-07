@@ -125,6 +125,10 @@ func ShowAddNodeMenu() {
 	fmt.Printf("     %s03.%s  Trojan-WS-TLS       %s04.%s  AnyTLS\n\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 
 	fmt.Printf("     %s05.%s  Hysteria2           %s06.%s  TUICv5\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
+	
+	// [修复] 补齐被隐藏的 3 个常规节点选项
+	fmt.Printf("     %s07.%s  Shadowsocks         %s08.%s  VLESS-TCP\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
+	fmt.Printf("     %s09.%s  SOCKS5\n", ColorWhite, ColorReset)
 
 	fmt.Printf("\n    %s─────────────────────────────────────────────%s\n", ColorGrey, ColorReset)
 	fmt.Printf("     %s00.%s  返回主菜单\n\n", ColorWhite, ColorReset)
