@@ -18,7 +18,7 @@ func ShowMainMenu() {
 		fmt.Println("  \\__ \\/ / __ \\/ __ \\  / __ \\/ __ \\| |/_/   ")
 		fmt.Println(" ___/ / / / / / /_/ / / /_/ / /_/ />  <     ")
 		fmt.Println("/____/_/_/ /_/\\__, / /_.___/\\____/_/|_|     ")
-		fmt.Println("             /____/         [ M A K E R  Z ] ")
+		fmt.Println("             /____/         [ M A K E R  G O ] ")
 		fmt.Print(ColorReset)
 
 		fmt.Printf("      %sN E T W O R K   D A S H B O A R D%s\n", ColorCyan, ColorReset)
@@ -62,8 +62,10 @@ func ShowMainMenu() {
 		switch choice {
 		case "1", "01":
 			ShowAddNodeMenu()
+		case "2", "02":
+			ShowArgoMenu() // <--- 挂载 Argo 菜单
 		case "3", "03":
-			ViewNodes() // 调用我们新加的无 Base64 纯净版查看功能
+			ViewNodes()
 			Pause("按回车键返回主菜单...")
 		case "4", "04":
 			DeleteNode()
@@ -77,6 +79,32 @@ func ShowMainMenu() {
 		case "7", "07":
 			ManageService("stop")
 			Pause("按回车键返回主菜单...")
+		case "8", "08":
+			if CheckServiceStatus("sing-box") {
+				LogSuccess("服务正在运行中")
+			} else {
+				LogError("服务已停止")
+			}
+			Pause("按回车键返回主菜单...")
+		case "9", "09":
+			ViewLog()      // <--- 挂载查看日志
+		case "10", "10":
+			LogWarn("定时启停功能可直接使用 Linux 原生 crontab -e 实现。")
+			Pause("按回车键返回...")
+		case "11", "11":
+			LogInfo("高级设置（如 DNS/日志级别），可直接编辑 /usr/local/etc/sing-box/config.json")
+			Pause("按回车键返回...")
+		case "12", "12":
+			CheckConfig()  // <--- 挂载检查配置
+			Pause("按回车键返回主菜单...")
+		case "13", "13":
+			UpdateCore()   // <--- 更新脚本与核心复用逻辑
+			Pause("按回车键返回主菜单...")
+		case "14", "14":
+			UpdateCore()   // <--- 挂载更新核心
+			Pause("按回车键返回主菜单...")
+		case "15", "15":
+			Uninstall()    // <--- 挂载卸载程序
 		case "0", "00":
 			os.Exit(0)
 		default:
