@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -33,7 +34,8 @@ func DeleteNode() {
 
 	root, err := ReadConfig()
 	if err != nil {
-		LogError("读取配置失败"); return
+		LogError("读取配置失败")
+		return
 	}
 
 	inbounds, ok := root["inbounds"].([]interface{})
@@ -69,7 +71,9 @@ func DeleteNode() {
 	fmt.Println("─────────────────────────────────────────────")
 
 	choice := ReadInput("请输入要删除的节点编号 (0返回): ")
-	if choice == "0" || choice == "" { return }
+	if choice == "0" || choice == "" {
+		return
+	}
 
 	if choice == "99" {
 		if ReadInput(ColorYellow+"确定要清空所有常规节点吗？(y/N): "+ColorReset) == "y" {
@@ -104,18 +108,18 @@ func DeleteNode() {
 		}
 		root["inbounds"] = newInbounds
 		WriteConfig(root)
-		
+
 		// === [修复] 同步删除 Clash 节点 ===
 		// 需要从 Metadata 获取真实的 node name
 		metadata := ReadMetadata()
 		targetName := targetTag
 		if meta, ok := metadata[targetTag].(map[string]interface{}); ok {
-			if n, ok := meta["name"].(string); ok { 
-				targetName = n 
+			if n, ok := meta["name"].(string); ok {
+				targetName = n
 			}
 		}
-		RemoveNodeFromYaml(targetName) 
-		
+		RemoveNodeFromYaml(targetName)
+
 		LogSuccess("节点 %s 已删除", targetTag)
 		ManageService("restart")
 	}
@@ -129,12 +133,14 @@ func ModifyPort() {
 
 	root, err := ReadConfig()
 	if err != nil {
-		LogError("读取配置失败"); return
+		LogError("读取配置失败")
+		return
 	}
 
 	inbounds, ok := root["inbounds"].([]interface{})
 	if !ok || len(inbounds) == 0 {
-		LogWarn("当前没有任何节点"); return
+		LogWarn("当前没有任何节点")
+		return
 	}
 
 	var validInbounds []map[string]interface{}
@@ -152,17 +158,21 @@ func ModifyPort() {
 	}
 
 	choice := ReadInput("请输入要修改的节点编号 (0返回): ")
-	if choice == "0" || choice == "" { return }
+	if choice == "0" || choice == "" {
+		return
+	}
 
 	idx, err := strconv.Atoi(choice)
-	if err != nil || idx < 1 || idx > len(validInbounds) { return }
+	if err != nil || idx < 1 || idx > len(validInbounds) {
+		return
+	}
 
 	target := validInbounds[idx-1]
 	oldPort := int(target["listen_port"].(float64))
 	oldTag := target["tag"].(string)
 
 	newPort := getValidPort()
-	
+
 	// 在 JSON 中直接修改指针引用
 	target["listen_port"] = newPort
 	// 简单处理：将 Tag 中的旧端口替换为新端口
@@ -172,6 +182,7 @@ func ModifyPort() {
 	LogSuccess("端口已修改: %d -> %d", oldPort, newPort)
 	ManageService("restart")
 }
+
 // ReadMetadata 安全读取 metadata.json 助手函数
 func ReadMetadata() map[string]interface{} {
 	data, err := os.ReadFile(MetadataFile)
@@ -229,9 +240,15 @@ func ViewNodes() {
 		name := tag
 		var pbk, sid string
 		if meta, ok := metadata[tag].(map[string]interface{}); ok {
-			if n, ok := meta["name"].(string); ok { name = n }
-			if p, ok := meta["publicKey"].(string); ok { pbk = p }
-			if s, ok := meta["shortId"].(string); ok { sid = s }
+			if n, ok := meta["name"].(string); ok {
+				name = n
+			}
+			if p, ok := meta["publicKey"].(string); ok {
+				pbk = p
+			}
+			if s, ok := meta["shortId"].(string); ok {
+				sid = s
+			}
 		}
 
 		// [修复] 将全角的 fmt。Printf 替换为半角的 fmt.Printf
@@ -242,20 +259,32 @@ func ViewNodes() {
 		var uuid, password, method, username string
 		if users, ok := inbound["users"].([]interface{}); ok && len(users) > 0 {
 			if u, ok := users[0].(map[string]interface{}); ok {
-				if val, ok := u["uuid"].(string); ok { uuid = val }
-				if val, ok := u["password"].(string); ok { password = val }
-				if val, ok := u["username"].(string); ok { username = val }
+				if val, ok := u["uuid"].(string); ok {
+					uuid = val
+				}
+				if val, ok := u["password"].(string); ok {
+					password = val
+				}
+				if val, ok := u["username"].(string); ok {
+					username = val
+				}
 			}
 		}
-		if m, ok := inbound["method"].(string); ok { method = m }
+		if m, ok := inbound["method"].(string); ok {
+			method = m
+		}
 
 		sni := "www.apple.com"
 		path := "/"
 		if tls, ok := inbound["tls"].(map[string]interface{}); ok {
-			if val, ok := tls["server_name"].(string); ok { sni = val }
+			if val, ok := tls["server_name"].(string); ok {
+				sni = val
+			}
 		}
 		if transport, ok := inbound["transport"].(map[string]interface{}); ok {
-			if val, ok := transport["path"].(string); ok { path = val }
+			if val, ok := transport["path"].(string); ok {
+				path = val
+			}
 		}
 
 		safeName := url.QueryEscape(name)

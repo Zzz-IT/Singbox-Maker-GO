@@ -87,24 +87,24 @@ func ShowMainMenu() {
 			}
 			Pause("按回车键返回主菜单...")
 		case "9", "09":
-			ViewLog()      // <--- 挂载查看日志
-		case "10", "10":
+			ViewLog() // <--- 挂载查看日志
+		case "10":
 			LogWarn("定时启停功能可直接使用 Linux 原生 crontab -e 实现。")
 			Pause("按回车键返回...")
-		case "11", "11":
+		case "11":
 			LogInfo("高级设置（如 DNS/日志级别），可直接编辑 /usr/local/etc/sing-box/config.json")
 			Pause("按回车键返回...")
-		case "12", "12":
-			CheckConfig()  // <--- 挂载检查配置
+		case "12":
+			CheckConfig() // <--- 挂载检查配置
 			Pause("按回车键返回主菜单...")
-		case "13", "13":
-			UpdateCore()   // <--- 更新脚本与核心复用逻辑
+		case "13":
+			UpdateCore() // <--- 更新脚本与核心复用逻辑
 			Pause("按回车键返回主菜单...")
-		case "14", "14":
-			UpdateCore()   // <--- 挂载更新核心
+		case "14":
+			UpdateCore() // <--- 挂载更新核心
 			Pause("按回车键返回主菜单...")
-		case "15", "15":
-			Uninstall()    // <--- 挂载卸载程序
+		case "15":
+			Uninstall() // <--- 挂载卸载程序
 		case "0", "00":
 			os.Exit(0)
 		default:
@@ -125,7 +125,7 @@ func ShowAddNodeMenu() {
 	fmt.Printf("     %s03.%s  Trojan-WS-TLS       %s04.%s  AnyTLS\n\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 
 	fmt.Printf("     %s05.%s  Hysteria2           %s06.%s  TUICv5\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
-	
+
 	// [修复] 补齐被隐藏的 3 个常规节点选项
 	fmt.Printf("     %s07.%s  Shadowsocks         %s08.%s  VLESS-TCP\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 	fmt.Printf("     %s09.%s  SOCKS5\n", ColorWhite, ColorReset)
@@ -159,7 +159,7 @@ func ShowAddNodeMenu() {
 		LogWarn("无效选项，取消操作...")
 		return
 	}
-	
+
 	// 操作完成后自动重启服务应用配置
 	ManageService("restart")
 	Pause("操作完成，按回车键继续...")

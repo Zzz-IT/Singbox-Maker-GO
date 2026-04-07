@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 )
@@ -36,13 +35,13 @@ func CheckConfig() {
 func UpdateCore() {
 	LogInfo("准备更新 Sing-box 核心程序...")
 	ManageService("stop")
-	
+
 	// 这里可以用原版的脚本逻辑或调用 bash 脚本来执行下载解压，为了保持纯 Go，这里做简化演示
 	cmd := exec.Command("bash", "-c", "curl -fsSL https://raw.githubusercontent.com/Zzz-IT/-Singbox-Maker-Z/main/install.sh | bash")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
-	
+
 	if err != nil {
 		LogError("核心更新失败")
 	} else {

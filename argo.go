@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -50,12 +49,12 @@ func StartArgoTunnel(port int, tunnelType string, token string) (string, error) 
 	// 临时隧道逻辑
 	urlArg := fmt.Sprintf("http://localhost:%d", port)
 	cmd := exec.Command(CloudflaredBin, "tunnel", "--url", urlArg)
-	
+
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return "", err
 	}
-	
+
 	if err := cmd.Start(); err != nil {
 		return "", err
 	}
@@ -66,7 +65,7 @@ func StartArgoTunnel(port int, tunnelType string, token string) (string, error) 
 	}()
 
 	// [修复] 将无缓冲通道改为带缓冲的通道，防止超时后协程死锁
-	domainChan := make(chan string, 1) 
+	domainChan := make(chan string, 1)
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		re := regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
@@ -131,8 +130,8 @@ func ViewArgoNodes() {
 	}
 	var root map[string]interface{}
 	json.Unmarshal(data, &root)
-	
-	for tag, v := range root {
+
+	for _, v := range root {
 		meta := v.(map[string]interface{})
 		fmt.Printf("─────────────────────────────────────────────\n")
 		fmt.Printf("  节点: %s%s%s (Argo Tunnel)\n", ColorGreen, meta["name"], ColorReset)
