@@ -89,11 +89,9 @@ func ShowMainMenu() {
 		case "9", "09":
 			ViewLog() // <--- 挂载查看日志
 		case "10":
-			LogWarn("定时启停功能可直接使用 Linux 原生 crontab -e 实现。")
-			Pause("按回车键返回...")
+			ScheduledLifecycleMenu()
 		case "11":
-			LogInfo("高级设置（如 DNS/日志级别），可直接编辑 /usr/local/etc/sing-box/config.json")
-			Pause("按回车键返回...")
+			ShowAdvancedMenu() // <--- 完美挂载高级设置
 		case "12":
 			CheckConfig() // <--- 挂载检查配置
 			Pause("按回车键返回主菜单...")
