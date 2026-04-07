@@ -171,22 +171,20 @@ func AddVLESSWSTLS() {
 			"certificate_path": certPath,
 			"key_path":         keyPath,
 		},
-		"transport": map[string]interface{}{
-			"type": "ws",
-			"path": wsPath,
-		},
+		"transport": map[string]interface{}{"type": "ws", "path": wsPath},
 	}
 
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
-		serverIP := GetPublicIP()
 
-		// 逻辑判定：如果是 CDN 节点，连接地址用域名；否则用 IP
-		finalAddr := serverIP
-		insecure := true
+		// 统一连接地址逻辑
+		finalAddr := GetPublicIP() // 默认为真实 IP
+		insecure := true           // 默认跳过证书验证
+		sniParam := serverName
+
 		if useCDN {
-			finalAddr = serverName
-			insecure = false
+			finalAddr = serverName // CDN 节点必须连接域名以触发 ECH
+			insecure = false       // CDN 节点使用合法证书，开启验证
 		}
 
 		clashProxy := map[string]interface{}{
@@ -201,40 +199,32 @@ func AddVLESSWSTLS() {
 			"network":          "ws",
 			"servername":       serverName,
 			"ws-opts": map[string]interface{}{
-				"path": wsPath,
-				"headers": map[string]interface{}{
-					"Host": serverName,
-				},
+				"path":    wsPath,
+				"headers": map[string]interface{}{"Host": serverName},
 			},
 		}
 
-		// 处理 ECH 注入与链接 SNI
-		finalSni := serverName
 		if useCDN && echEnabled {
 			clashProxy["client-fingerprint"] = "chrome"
 			clashProxy["ech-opts"] = map[string]interface{}{
 				"enable":            true,
 				"query-server-name": "cloudflare-ech.com",
 			}
-			finalSni = "cloudflare-ech.com"
+			sniParam = "cloudflare-ech.com"
 		}
 
 		AddNodeToYaml(clashProxy)
 
-		// 链接地址处理：如果是 IP 则进行 IPv6 格式化
+		// 格式化 URI 地址
 		linkAddr := finalAddr
 		if !useCDN {
-			linkAddr = FormatIPForURI(serverIP)
+			linkAddr = FormatIPForURI(finalAddr)
 		}
 
 		link := fmt.Sprintf("vless://%s@%s:%d?security=tls&encryption=none&type=ws&host=%s&path=%s&sni=%s&fp=chrome&insecure=%d#%s",
-			uuid, linkAddr, port, serverName, url.QueryEscape(wsPath), finalSni, map[bool]int{true: 1, false: 0}[insecure], url.QueryEscape(name))
+			uuid, linkAddr, port, serverName, url.QueryEscape(wsPath), sniParam, map[bool]int{true: 1, false: 0}[insecure], url.QueryEscape(name))
 
-		// 修复：在这里使用 link 和 ColorCyan
 		LogSuccess("节点 [%s] 添加成功\n%s链接: %s%s", name, ColorYellow, ColorCyan, link)
-		if useCDN && echEnabled {
-			fmt.Printf("%s(已开启客户端 ECH 注入保护)%s\n", ColorYellow, ColorReset)
-		}
 	}
 }
 

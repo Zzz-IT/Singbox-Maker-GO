@@ -224,7 +224,7 @@ func deployArgoNode(nodeType string) {
 	}
 
 	// ==========================================
-	// 同步至 clash.yaml (带 ECH 检查)
+	// 6. 生成并同步配置 (整合 ECH 逻辑)
 	// ==========================================
 	echEnabled := GetClientECH()
 	sniParam := domain
@@ -234,7 +234,7 @@ func deployArgoNode(nodeType string) {
 
 	clashProxy := map[string]interface{}{
 		"name":             name,
-		"server":           domain, // Argo 必须用 CF 的域名做 Server
+		"server":           domain,
 		"port":             443,
 		"tls":              true,
 		"network":          "ws",
@@ -242,7 +242,6 @@ func deployArgoNode(nodeType string) {
 		"skip-cert-verify": false,
 	}
 
-	// 如果 ECH 开关开启，且是经过 CF 的 Argo 隧道，则强行下发 ECH
 	if echEnabled {
 		clashProxy["client-fingerprint"] = "chrome"
 		clashProxy["ech-opts"] = map[string]interface{}{
@@ -256,10 +255,8 @@ func deployArgoNode(nodeType string) {
 		clashProxy["uuid"] = uuid
 		clashProxy["udp"] = true
 		clashProxy["ws-opts"] = map[string]interface{}{
-			"path": wsPath,
-			"headers": map[string]interface{}{
-				"Host": domain,
-			},
+			"path":    wsPath,
+			"headers": map[string]interface{}{"Host": domain},
 		}
 	} else {
 		clashProxy["type"] = "trojan"
@@ -267,22 +264,18 @@ func deployArgoNode(nodeType string) {
 		clashProxy["udp"] = true
 		clashProxy["sni"] = domain
 		clashProxy["ws-opts"] = map[string]interface{}{
-			"path": wsPath,
-			"headers": map[string]interface{}{
-				"Host": domain,
-			},
+			"path":    wsPath,
+			"headers": map[string]interface{}{"Host": domain},
 		}
 	}
 	AddNodeToYaml(clashProxy)
 
-	// ==========================================
-	// 生成并输出分享链接 (动态 SNI)
-	// ==========================================
+	// 最终生成分享链接
 	if nodeType == "vless" {
-		link = fmt.Sprintf("vless://%s@%s:443?encryption=none&security=tls&type=ws&host=%s&path=%s&sni=%s#%s",
+		link = fmt.Sprintf("vless://%s@%s:443?encryption=none&security=tls&type=ws&host=%s&path=%s&sni=%s&fp=chrome#%s",
 			uuid, domain, domain, url.QueryEscape(wsPath), sniParam, url.QueryEscape(name))
 	} else {
-		link = fmt.Sprintf("trojan://%s@%s:443?security=tls&type=ws&host=%s&path=%s&sni=%s#%s",
+		link = fmt.Sprintf("trojan://%s@%s:443?security=tls&type=ws&host=%s&path=%s&sni=%s&fp=chrome#%s",
 			password, domain, domain, url.QueryEscape(wsPath), sniParam, url.QueryEscape(name))
 	}
 
