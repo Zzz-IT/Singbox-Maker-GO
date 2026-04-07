@@ -61,7 +61,16 @@ func ShowMainMenu() {
 
 		switch choice {
 		case "1", "01":
-			ShowAddNodeMenu() // 跳转到子菜单
+			ShowAddNodeMenu()
+		case "3", "03":
+			ViewNodes() // 调用我们新加的无 Base64 纯净版查看功能
+			Pause("按回车键返回主菜单...")
+		case "4", "04":
+			DeleteNode()
+			Pause("按回车键返回主菜单...")
+		case "5", "05":
+			ModifyPort()
+			Pause("按回车键返回主菜单...")
 		case "6", "06":
 			ManageService("restart")
 			Pause("按回车键返回主菜单...")
@@ -98,14 +107,24 @@ func ShowAddNodeMenu() {
 		AddVLESSReality()
 	case "2", "02":
 		AddVLESSWSTLS()
+	case "3", "03":
+		AddTrojanWSTLS()
+	case "4", "04":
+		AddAnyTLS()
 	case "5", "05":
 		AddHysteria2()
+	case "6", "06":
+		AddTUIC()
 	case "7", "07":
 		AddShadowsocks()
+	case "8", "08":
+		AddVLESSTCP()
+	case "9", "09":
+		AddSOCKS5()
 	case "0", "00":
 		return
 	default:
-		LogWarn("该协议尚未在 Go 版本中实装")
+		LogWarn("无效选项，取消操作...")
 		return
 	}
 	
