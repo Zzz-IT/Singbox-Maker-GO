@@ -92,7 +92,7 @@ func DeleteNode() {
 	target := validInbounds[idx-1]
 	targetTag := target["tag"].(string)
 
-	if ReadInput(fmt。Sprintf("%s确认删除节点 [%s] 吗？(y/N): %s", ColorYellow, targetTag, ColorReset)) == "y" {
+	if ReadInput(fmt.Sprintf("%s确认删除节点 [%s] 吗？(y/N): %s", ColorYellow, targetTag, ColorReset)) == "y" {
 		// 重新构建 inbounds 切片
 		var newInbounds []interface{}
 		for _, v := range inbounds {
