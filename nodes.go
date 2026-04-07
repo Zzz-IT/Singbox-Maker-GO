@@ -235,3 +235,187 @@ func AddShadowsocks() {
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
+// 5. Trojan-WS-TLS 部署逻辑
+func AddTrojanWSTLS() {
+	LogInfo(" 创建 Trojan-WS-TLS 节点 ")
+	serverName := ReadInput("伪装域名 (SNI): ")
+	if serverName == "" {
+		LogError("伪装域名不能为空"); return
+	}
+	port := getValidPort()
+	name := ReadInput("名称 (默认 Trojan-WS): ")
+	if name == "" { name = "Trojan-WS" }
+	
+	wsPath := ReadInput("WS路径 (回车随机): ")
+	if wsPath == "" { wsPath = "/" + helperRandHex(4) }
+	if !strings.HasPrefix(wsPath, "/") { wsPath = "/" + wsPath }
+
+	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
+	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
+	keyPath := fmt.Sprintf("%s/%s.key", CertDir, tag)
+	GenerateSelfSignedCert(serverName, certPath, keyPath)
+
+	password := ReadInput("密码(回车随机): ")
+	if password == "" { password = helperRandHex(8) }
+
+	inbound := map[string]interface{}{
+		"type":        "trojan",
+		"tag":         tag,
+		"listen":      "::",
+		"listen_port": port,
+		"users":       []map[string]interface{}{{"password": password}},
+		"tls": map[string]interface{}{
+			"enabled":          true,
+			"certificate_path": certPath,
+			"key_path":         keyPath,
+		},
+		"transport": map[string]interface{}{
+			"type": "ws",
+			"path": wsPath,
+		},
+	}
+
+	if AppendInbound(inbound) == nil {
+		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
+		serverIP := GetPublicIP()
+		link := fmt.Sprintf("trojan://%s@%s:%d?security=tls&type=ws&host=%s&path=%s&sni=%s&allowInsecure=1#%s",
+			password, serverIP, port, serverName, url.QueryEscape(wsPath), serverName, url.QueryEscape(name))
+		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
+	}
+}
+
+// 6. AnyTLS 部署逻辑
+func AddAnyTLS() {
+	LogInfo(" 创建 AnyTLS 节点 ")
+	port := getValidPort()
+	serverName := ReadInput("SNI (默认 www.apple.com): ")
+	if serverName == "" { serverName = "www.apple.com" }
+	name := ReadInput("名称 (默认 AnyTLS): ")
+	if name == "" { name = "AnyTLS" }
+
+	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
+	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
+	keyPath := fmt.Sprintf("%s/%s.key", CertDir, tag)
+	GenerateSelfSignedCert(serverName, certPath, keyPath)
+
+	password := ReadInput("密码/UUID(回车随机): ")
+	if password == "" { password = GenerateUUID() }
+
+	inbound := map[string]interface{}{
+		"type":        "anytls",
+		"tag":         tag,
+		"listen":      "::",
+		"listen_port": port,
+		"users":       []map[string]interface{}{{"name": "default", "password": password}},
+		"padding_scheme": []string{"stop=2", "0=100-200", "1=100-200"},
+		"tls": map[string]interface{}{
+			"enabled":          true,
+			"server_name":      serverName,
+			"certificate_path": certPath,
+			"key_path":         keyPath,
+		},
+	}
+
+	if AppendInbound(inbound) == nil {
+		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
+		serverIP := GetPublicIP()
+		link := fmt.Sprintf("anytls://%s@%s:%d?security=tls&sni=%s&insecure=1&allowInsecure=1&type=tcp#%s",
+			password, serverIP, port, serverName, url.QueryEscape(name))
+		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
+	}
+}
+
+// 7. TUICv5 部署逻辑
+func AddTUIC() {
+	LogInfo(" 创建 TUICv5 节点 ")
+	port := getValidPort()
+	serverName := ReadInput("SNI (默认 www.apple.com): ")
+	if serverName == "" { serverName = "www.apple.com" }
+	name := ReadInput("名称 (默认 TUICv5): ")
+	if name == "" { name = "TUICv5" }
+
+	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
+	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
+	keyPath := fmt.Sprintf("%s/%s.key", CertDir, tag)
+	GenerateSelfSignedCert(serverName, certPath, keyPath)
+
+	uuid := GenerateUUID()
+	password := helperRandHex(8)
+
+	inbound := map[string]interface{}{
+		"type":        "tuic",
+		"tag":         tag,
+		"listen":      "::",
+		"listen_port": port,
+		"users":       []map[string]interface{}{{"uuid": uuid, "password": password}},
+		"congestion_control": "bbr",
+		"tls": map[string]interface{}{
+			"enabled":          true,
+			"alpn":             []string{"h3"},
+			"certificate_path": certPath,
+			"key_path":         keyPath,
+		},
+	}
+
+	if AppendInbound(inbound) == nil {
+		SaveMetadata(tag, map[string]interface{}{"name": name})
+		serverIP := GetPublicIP()
+		link := fmt.Sprintf("tuic://%s:%s@%s:%d?sni=%s&alpn=h3&congestion_control=bbr&udp_relay_mode=native&allow_insecure=1#%s",
+			uuid, password, serverIP, port, serverName, url.QueryEscape(name))
+		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
+	}
+}
+
+// 8. VLESS-TCP 部署逻辑
+func AddVLESSTCP() {
+	LogInfo(" 创建 VLESS-TCP 节点 ")
+	port := getValidPort()
+	name := ReadInput("名称 (默认 VLESS-TCP): ")
+	if name == "" { name = "VLESS-TCP" }
+
+	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
+	uuid := GenerateUUID()
+
+	inbound := map[string]interface{}{
+		"type":        "vless",
+		"tag":         tag,
+		"listen":      "::",
+		"listen_port": port,
+		"users":       []map[string]interface{}{{"uuid": uuid, "flow": ""}},
+		"tls":         map[string]interface{}{"enabled": false},
+	}
+
+	if AppendInbound(inbound) == nil {
+		SaveMetadata(tag, map[string]interface{}{"name": name})
+		serverIP := GetPublicIP()
+		link := fmt.Sprintf("vless://%s@%s:%d?encryption=none&type=tcp#%s", uuid, serverIP, port, url.QueryEscape(name))
+		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
+	}
+}
+
+// 9. SOCKS5 部署逻辑
+func AddSOCKS5() {
+	LogInfo(" 创建 SOCKS5 节点 ")
+	port := getValidPort()
+	username := ReadInput("用户 (回车随机): ")
+	if username == "" { username = helperRandHex(4) }
+	password := ReadInput("密码 (回车随机): ")
+	if password == "" { password = helperRandHex(8) }
+	name := ReadInput("名称 (默认 SOCKS5): ")
+	if name == "" { name = "SOCKS5" }
+
+	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
+
+	inbound := map[string]interface{}{
+		"type":        "socks",
+		"tag":         tag,
+		"listen":      "::",
+		"listen_port": port,
+		"users":       []map[string]interface{}{{"username": username, "password": password}},
+	}
+
+	if AppendInbound(inbound) == nil {
+		SaveMetadata(tag, map[string]interface{}{"name": name})
+		LogSuccess("SOCKS5 节点 [%s] 添加成功\n地址: %s:%d\n用户: %s\n密码: %s", name, GetPublicIP(), port, username, password)
+	}
+}
