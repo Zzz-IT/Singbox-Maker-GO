@@ -22,9 +22,24 @@ func ReadConfig() (map[string]interface{}, error) {
 }
 
 // WriteConfig 安全写入 config.json
+// WriteConfig 安全写入 config.json (原子化写入，防止断电/磁盘满导致配置丢失)
 func WriteConfig(root map[string]interface{}) error {
-	out, _ := json.MarshalIndent(root, "", "  ")
-	return os.WriteFile(ConfigFile, out, 0644)
+	out, err := json.MarshalIndent(root, "", "  ")
+	if err != nil {
+		return fmt.Errorf("JSON 编码失败: %v", err)
+	}
+
+	tmpFile := ConfigFile + ".tmp"
+	// 1. 先写入临时文件
+	if err := os.WriteFile(tmpFile, out, 0644); err != nil {
+		return fmt.Errorf("写入临时配置失败: %v", err)
+	}
+
+	// 2. 写入成功后，原子级重命名覆盖原文件
+	if err := os.Rename(tmpFile, ConfigFile); err != nil {
+		return fmt.Errorf("替换原配置文件失败: %v", err)
+	}
+	return nil
 }
 
 // DeleteNode 替代原版的 _delete_node
@@ -110,8 +125,7 @@ func DeleteNode() {
 		root["inbounds"] = newInbounds
 		WriteConfig(root)
 
-		// === [修复] 同步删除 Clash 节点 ===
-		// 需要从 Metadata 获取真实的 node name
+		// === 同步删除 Clash 节点 ===
 		metadata := ReadMetadata()
 		targetName := targetTag
 		if meta, ok := metadata[targetTag].(map[string]interface{}); ok {
@@ -121,11 +135,18 @@ func DeleteNode() {
 		}
 		RemoveNodeFromYaml(targetName)
 
-		LogSuccess("节点 %s 已删除", targetTag)
+		// === 【新增】清理配套的证书文件 ===
+		certPath := fmt.Sprintf("/usr/local/etc/sing-box/%s.pem", targetTag)
+		keyPath := fmt.Sprintf("/usr/local/etc/sing-box/%s.key", targetTag)
+		os.Remove(certPath)
+		os.Remove(keyPath)
+
+		LogSuccess("节点 %s 及关联文件已清理", targetTag)
 		ManageService("restart")
 	}
 }
 
+// ModifyPort 替代原版的 _modify_port
 // ModifyPort 替代原版的 _modify_port
 func ModifyPort() {
 	ClearScreen()
@@ -179,9 +200,37 @@ func ModifyPort() {
 	newTag := strings.Replace(oldTag, fmt.Sprintf("_%d", oldPort), fmt.Sprintf("_%d", newPort), 1)
 	target["tag"] = newTag
 
+	// ==========================================
+	// 【新增修复】自动重命名关联的本地自签证书
+	// ==========================================
+	if tlsMap, ok := target["tls"].(map[string]interface{}); ok {
+		// 构建新旧证书文件路径
+		oldCertPath := fmt.Sprintf("/usr/local/etc/sing-box/%s.pem", oldTag)
+		oldKeyPath := fmt.Sprintf("/usr/local/etc/sing-box/%s.key", oldTag)
+		newCertPath := fmt.Sprintf("/usr/local/etc/sing-box/%s.pem", newTag)
+		newKeyPath := fmt.Sprintf("/usr/local/etc/sing-box/%s.key", newTag)
+
+		// 尝试重命名磁盘上的证书文件
+		if _, err := os.Stat(oldCertPath); err == nil {
+			os.Rename(oldCertPath, newCertPath)
+		}
+		if _, err := os.Stat(oldKeyPath); err == nil {
+			os.Rename(oldKeyPath, newKeyPath)
+		}
+
+		// 同步修改 JSON 配置里的路径引用 (仅在当前路径匹配旧路径时才修改，防止误伤用户自定义证书)
+		if cPath, ok := tlsMap["certificate_path"].(string); ok && cPath == oldCertPath {
+			tlsMap["certificate_path"] = newCertPath
+		}
+		if kPath, ok := tlsMap["key_path"].(string); ok && kPath == oldKeyPath {
+			tlsMap["key_path"] = newKeyPath
+		}
+	}
+	// ==========================================
+
 	WriteConfig(root)
 
-	// --- 修复：同步更新 metadata.json ---
+	// --- 同步更新 metadata.json ---
 	metadata := ReadMetadata()
 	var nodeName string = oldTag // 默认 fallback 为老 tag
 	if meta, ok := metadata[oldTag].(map[string]interface{}); ok {
@@ -195,7 +244,7 @@ func ModifyPort() {
 		os.WriteFile(MetadataFile, outMeta, 0644)
 	}
 
-	// --- 修复：同步更新 clash.yaml ---
+	// --- 同步更新 clash.yaml ---
 	UpdateNodePortInYaml(nodeName, newPort)
 
 	LogSuccess("端口已修改: %d -> %d", oldPort, newPort)

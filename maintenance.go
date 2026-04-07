@@ -105,14 +105,24 @@ func UpdateCore() {
 	ManageService("stop")
 
 	LogInfo("正在纯内存解压核心文件，请稍候...")
-	if err := downloadAndExtractGz(url, "/usr/local/bin/sing-box", "sing-box"); err != nil {
-		LogError("核心更新失败: %v", err)
-		ManageService("start")
+
+	// 【新增修复】先下载到临时路径
+	tmpPath := "/usr/local/bin/sing-box.tmp"
+	if err := downloadAndExtractGz(url, tmpPath, "sing-box"); err != nil {
+		LogError("核心更新失败，网络中断或压缩包损坏: %v", err)
+		os.Remove(tmpPath)     // 清理可能残缺的临时文件
+		ManageService("start") // 恢复旧版本核心运行
 		return
 	}
 
-	os.Chmod("/usr/local/bin/sing-box", 0755)
-	LogSuccess("核心更新完成")
+	// 【新增修复】下载成功后，赋予权限并替换原文件
+	os.Chmod(tmpPath, 0755)
+	if err := os.Rename(tmpPath, "/usr/local/bin/sing-box"); err != nil {
+		LogError("替换核心文件失败: %v", err)
+	} else {
+		LogSuccess("核心更新完成")
+	}
+
 	ManageService("start")
 }
 

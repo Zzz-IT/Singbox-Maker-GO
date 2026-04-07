@@ -26,23 +26,51 @@ func helperRandHex(bytes int) string {
 // GenerateSelfSignedCert 完美替代原版的 _generate_self_signed_cert
 func GenerateSelfSignedCert(domain, certPath, keyPath string) error {
 	LogInfo("正在使用 openssl 生成自签证书...")
-	// 新增：确保目录存在
+	// 确保目录存在
 	if err := os.MkdirAll(CertDir, 0755); err != nil {
 		LogError("创建证书目录失败: %v", err)
 		return err
+	}
+
+	// 【修复】对用户输入的 domain 进行基础的非法字符过滤，防止破坏 openssl 参数解析
+	safeDomain := strings.ReplaceAll(domain, "/", "")
+	safeDomain = strings.ReplaceAll(safeDomain, "\\", "")
+	safeDomain = strings.ReplaceAll(safeDomain, ";", "")
+	safeDomain = strings.ReplaceAll(safeDomain, "\n", "")
+	safeDomain = strings.ReplaceAll(safeDomain, "\r", "")
+	safeDomain = strings.TrimSpace(safeDomain)
+	if safeDomain == "" {
+		safeDomain = "www.apple.com" // 极端情况下的兜底
 	}
 
 	err := exec.Command("openssl", "ecparam", "-genkey", "-name", "prime256v1", "-out", keyPath).Run()
 	if err != nil {
 		return fmt.Errorf("生成密钥失败: %v", err)
 	}
+
+	// 使用过滤后的 safeDomain，并利用 Go 原生 exec 安全传参
 	err = exec.Command("openssl", "req", "-new", "-x509", "-days", "3650",
-		"-key", keyPath, "-out", certPath, "-subj", "/CN="+domain).Run()
+		"-key", keyPath, "-out", certPath, "-subj", "/CN="+safeDomain).Run()
 	return err
 }
 
-// getValidPort 封装读取合法端口的逻辑
+// getValidPort 封装读取合法端口的逻辑，并增加端口防冲突检查
 func getValidPort() int {
+	// 读取现有配置以检查端口冲突
+	config, err := ReadConfig()
+	usedPorts := make(map[int]bool)
+	if err == nil {
+		if inbounds, ok := config["inbounds"].([]interface{}); ok {
+			for _, v := range inbounds {
+				if inb, isMap := v.(map[string]interface{}); isMap {
+					if port, ok := inb["listen_port"].(float64); ok {
+						usedPorts[int(port)] = true
+					}
+				}
+			}
+		}
+	}
+
 	for {
 		portStr := ReadInput("监听端口: ")
 		if portStr == "" {
@@ -51,6 +79,10 @@ func getValidPort() int {
 		}
 		port, err := strconv.Atoi(portStr)
 		if err == nil && port > 0 && port <= 65535 {
+			if usedPorts[port] {
+				LogError("端口 %d 已被其他节点占用，请更换端口！", port)
+				continue
+			}
 			return port
 		}
 		LogError("无效端口，请输入 1-65535 之间的数字")

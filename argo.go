@@ -43,19 +43,42 @@ func StartArgoTunnel(port int, tunnelType string, token string) (string, error) 
 	LogInfo("正在启动 Argo 隧道 (目标端口: %d)...", port)
 
 	if tunnelType == "fixed" {
-		// 固定隧道直接后台运行
-		cmdStr := fmt.Sprintf("nohup %s tunnel run --token %s > /dev/null 2>&1 &", CloudflaredBin, token)
-		exec.Command("sh", "-c", cmdStr).Start()
+		// 【修复】直接使用 exec.Command 传参，避免 sh -c 导致的 Shell 注入风险
+		cmd := exec.Command(CloudflaredBin, "tunnel", "run", "--token", token)
+		// 脱离终端标准输出和错误输出，实现静默后台运行
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+
+		if err := cmd.Start(); err != nil {
+			return "", fmt.Errorf("启动固定隧道失败: %v", err)
+		}
 		time.Sleep(2 * time.Second)
 		return "", nil
 	}
 
-	// 临时隧道逻辑：写入独立日志文件，随后进行轮询抓取
-	logFile := fmt.Sprintf("/tmp/argo_%d.log", port)
+	// 临时隧道逻辑：
+	// 【修复】将日志存放路径从危险的 /tmp 移动到你的专属配置目录下，防止符号链接攻击
+	logFile := fmt.Sprintf("/usr/local/etc/sing-box/argo_%d.log", port)
 	os.Remove(logFile)
 
-	cmdStr := fmt.Sprintf("nohup %s tunnel --url http://127.0.0.1:%d > %s 2>&1 &", CloudflaredBin, port, logFile)
-	exec.Command("sh", "-c", cmdStr).Start()
+	// 安全创建并打开日志文件，用于重定向子进程的输出
+	outFile, err := os.Create(logFile)
+	if err != nil {
+		return "", fmt.Errorf("创建临时日志文件失败: %v", err)
+	}
+
+	// 【修复】不使用 sh -c，直接传递参数防止注入
+	urlParam := fmt.Sprintf("http://127.0.0.1:%d", port)
+	cmd := exec.Command(CloudflaredBin, "tunnel", "--url", urlParam)
+	cmd.Stdout = outFile
+	cmd.Stderr = outFile
+
+	if err := cmd.Start(); err != nil {
+		outFile.Close()
+		return "", fmt.Errorf("启动临时隧道失败: %v", err)
+	}
+	// 父进程关闭文件句柄，子进程会继续持有并写入
+	outFile.Close()
 
 	// 轮询抓取 trycloudflare 域名 (最长等待 15 秒)
 	re := regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
