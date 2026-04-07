@@ -56,15 +56,21 @@ func StartArgoTunnel(port int, tunnelType string, token string) (string, error) 
 		return "", err
 	}
 	
-	if err := cmd.Start(); err != nil {
+	if err := cmd。Start(); err != nil {
 		return "", err
 	}
 
-	// 利用 Go 的 bufio 安全读取实时日志，提取 trycloudflare.com
-	domainChan := make(chan string)
+	// [新增] 在后台调用 cmd.Wait() 防止产生僵尸进程
+	go func() {
+		cmd.Wait()
+	}()
+
+	// [修复] 将无缓冲通道改为带缓冲的通道，防止超时后协程死锁
+	domainChan := make(chan string, 1) 
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		re := regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
+
 		for scanner.Scan() {
 			line := scanner.Text()
 			if match := re.FindString(line); match != "" {
