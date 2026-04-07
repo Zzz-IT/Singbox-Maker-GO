@@ -96,8 +96,7 @@ func ShowMainMenu() {
 			CheckConfig() // <--- 挂载检查配置
 			Pause("按回车键返回主菜单...")
 		case "13":
-			UpdateCore() // <--- 更新脚本与核心复用逻辑
-			Pause("按回车键返回主菜单...")
+			UpdatePanel() // <--- 更新脚本与核心复用逻辑
 		case "14":
 			UpdateCore() // <--- 挂载更新核心
 			Pause("按回车键返回主菜单...")
