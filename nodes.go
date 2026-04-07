@@ -2,9 +2,11 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -24,8 +26,17 @@ func helperRandHex(bytes int) string {
 // GenerateSelfSignedCert 完美替代原版的 _generate_self_signed_cert
 func GenerateSelfSignedCert(domain, certPath, keyPath string) error {
 	LogInfo("正在使用 openssl 生成自签证书...")
-	exec.Command("openssl", "ecparam", "-genkey", "-name", "prime256v1", "-out", keyPath).Run()
-	err := exec.Command("openssl", "req", "-new", "-x509", "-days", "3650",
+	// 新增：确保目录存在
+	if err := os.MkdirAll(CertDir, 0755); err != nil {
+		LogError("创建证书目录失败: %v", err)
+		return err
+	}
+
+	err := exec.Command("openssl", "ecparam", "-genkey", "-name", "prime256v1", "-out", keyPath).Run()
+	if err != nil {
+		return fmt.Errorf("生成密钥失败: %v", err)
+	}
+	err = exec.Command("openssl", "req", "-new", "-x509", "-days", "3650",
 		"-key", keyPath, "-out", certPath, "-subj", "/CN="+domain).Run()
 	return err
 }
@@ -87,8 +98,8 @@ func AddVLESSReality() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "publicKey": publicKey, "shortId": shortID})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":               name,
 			"type":               "vless",
@@ -108,12 +119,12 @@ func AddVLESSReality() {
 		AddNodeToYaml(clashProxy)
 
 		link := fmt.Sprintf("vless://%s@%s:%d?security=reality&encryption=none&pbk=%s&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=%s&sid=%s#%s",
-			uuid, serverIP, port, publicKey, serverName, shortID, url.QueryEscape(name))
+			uuid, linkIP, port, publicKey, serverName, shortID, url.QueryEscape(name))
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
 
-// 2. VLESS-WS-TLS 部署逻辑
+// 2. VLESS-WS-TLS 部署逻辑 (已更新 CDN 与 ECH 逻辑)
 func AddVLESSWSTLS() {
 	LogInfo(" 创建 VLESS-WS-TLS 节点 ")
 	serverName := ReadInput("伪装域名 (SNI): ")
@@ -134,6 +145,11 @@ func AddVLESSWSTLS() {
 	if !strings.HasPrefix(wsPath, "/") {
 		wsPath = "/" + wsPath
 	}
+
+	// [新增] 询问 CDN 与 检查 ECH 开关
+	useCDN := ReadInput("此节点是否准备套用 Cloudflare CDN (小黄云)? (y/N): ") == "y"
+	echEnabled := GetClientECH()
+	sniParam := serverName
 
 	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
 	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
@@ -165,8 +181,8 @@ func AddVLESSWSTLS() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":             name,
 			"type":             "vless",
@@ -175,7 +191,7 @@ func AddVLESSWSTLS() {
 			"uuid":             uuid,
 			"tls":              true,
 			"udp":              true,
-			"skip-cert-verify": true, // 自签证书默认跳过验证
+			"skip-cert-verify": true,
 			"network":          "ws",
 			"servername":       serverName,
 			"ws-opts": map[string]interface{}{
@@ -185,15 +201,31 @@ func AddVLESSWSTLS() {
 				},
 			},
 		}
+
+		// [核心逻辑] 如果是 CDN 节点且 ECH 开启
+		if useCDN && echEnabled {
+			clashProxy["client-fingerprint"] = "chrome"
+			clashProxy["ech-opts"] = map[string]interface{}{
+				"enable":            true,
+				"query-server-name": "cloudflare-ech.com",
+			}
+			sniParam = "cloudflare-ech.com"
+		}
+
 		AddNodeToYaml(clashProxy)
 
 		link := fmt.Sprintf("vless://%s@%s:%d?security=tls&encryption=none&type=ws&host=%s&path=%s&sni=%s&insecure=1#%s",
-			uuid, serverIP, port, serverName, url.QueryEscape(wsPath), serverName, url.QueryEscape(name))
-		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
+			uuid, linkIP, port, serverName, url.QueryEscape(wsPath), sniParam, url.QueryEscape(name))
+
+		LogSuccess("节点 [%s] 添加成功", name)
+		if useCDN && echEnabled {
+			fmt.Printf("%s(已开启客户端 ECH 注入保护)%s\n", ColorYellow, ColorReset)
+		}
+		fmt.Printf("链接: %s\n%s", ColorCyan, link)
 	}
 }
 
-// 3. Trojan-WS-TLS 部署逻辑
+// 3. Trojan-WS-TLS 部署逻辑 (已更新 CDN 与 ECH 逻辑)
 func AddTrojanWSTLS() {
 	LogInfo(" 创建 Trojan-WS-TLS 节点 ")
 	serverName := ReadInput("伪装域名 (SNI): ")
@@ -214,6 +246,11 @@ func AddTrojanWSTLS() {
 	if !strings.HasPrefix(wsPath, "/") {
 		wsPath = "/" + wsPath
 	}
+
+	// [新增] 询问 CDN 与 检查 ECH 开关
+	useCDN := ReadInput("此节点是否准备套用 Cloudflare CDN (小黄云)? (y/N): ") == "y"
+	echEnabled := GetClientECH()
+	sniParam := serverName
 
 	tag := fmt.Sprintf("%s_%d", strings.ReplaceAll(name, " ", "_"), port)
 	certPath := fmt.Sprintf("%s/%s.pem", CertDir, tag)
@@ -245,8 +282,8 @@ func AddTrojanWSTLS() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":             name,
 			"type":             "trojan",
@@ -264,11 +301,27 @@ func AddTrojanWSTLS() {
 				},
 			},
 		}
+
+		// [核心逻辑] 如果是 CDN 节点且 ECH 开启
+		if useCDN && echEnabled {
+			clashProxy["client-fingerprint"] = "chrome"
+			clashProxy["ech-opts"] = map[string]interface{}{
+				"enable":            true,
+				"query-server-name": "cloudflare-ech.com",
+			}
+			sniParam = "cloudflare-ech.com"
+		}
+
 		AddNodeToYaml(clashProxy)
 
 		link := fmt.Sprintf("trojan://%s@%s:%d?security=tls&type=ws&host=%s&path=%s&sni=%s&allowInsecure=1#%s",
-			password, serverIP, port, serverName, url.QueryEscape(wsPath), serverName, url.QueryEscape(name))
-		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
+			password, linkIP, port, serverName, url.QueryEscape(wsPath), sniParam, url.QueryEscape(name))
+
+		LogSuccess("节点 [%s] 添加成功", name)
+		if useCDN && echEnabled {
+			fmt.Printf("%s(已开启客户端 ECH 注入保护)%s\n", ColorYellow, ColorReset)
+		}
+		fmt.Printf("链接: %s\n%s", ColorCyan, link)
 	}
 }
 
@@ -296,11 +349,11 @@ func AddAnyTLS() {
 	}
 
 	inbound := map[string]interface{}{
-		"type":        "anytls",
-		"tag":         tag,
-		"listen":      "::",
-		"listen_port": port,
-		"users":       []map[string]interface{}{{"name": "default", "password": password}},
+		"type":           "anytls",
+		"tag":            tag,
+		"listen":         "::",
+		"listen_port":    port,
+		"users":          []map[string]interface{}{{"name": "default", "password": password}},
 		"padding_scheme": []string{"stop=2", "0=100-200", "1=100-200"},
 		"tls": map[string]interface{}{
 			"enabled":          true,
@@ -313,11 +366,11 @@ func AddAnyTLS() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":                        name,
-			"type":                        "anytls", // Note: 某些内核可能写作 vless+anytls，这里遵循原版写法
+			"type":                        "anytls",
 			"server":                      serverIP,
 			"port":                        port,
 			"password":                    password,
@@ -333,7 +386,7 @@ func AddAnyTLS() {
 		AddNodeToYaml(clashProxy)
 
 		link := fmt.Sprintf("anytls://%s@%s:%d?security=tls&sni=%s&insecure=1&allowInsecure=1&type=tcp#%s",
-			password, serverIP, port, serverName, url.QueryEscape(name))
+			password, linkIP, port, serverName, url.QueryEscape(name))
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
@@ -386,8 +439,8 @@ func AddHysteria2() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name, "server_name": serverName})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":             name,
 			"type":             "hysteria2",
@@ -411,7 +464,7 @@ func AddHysteria2() {
 			oparam = "&obfs=salamander&obfs-password=" + obfsPassword
 		}
 		link := fmt.Sprintf("hysteria2://%s@%s:%d?sni=%s&insecure=1%s#%s",
-			password, serverIP, port, serverName, oparam, url.QueryEscape(name))
+			password, linkIP, port, serverName, oparam, url.QueryEscape(name))
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
@@ -438,11 +491,11 @@ func AddTUIC() {
 	password := helperRandHex(8)
 
 	inbound := map[string]interface{}{
-		"type":        "tuic",
-		"tag":         tag,
-		"listen":      "::",
-		"listen_port": port,
-		"users":       []map[string]interface{}{{"uuid": uuid, "password": password}},
+		"type":               "tuic",
+		"tag":                tag,
+		"listen":             "::",
+		"listen_port":        port,
+		"users":              []map[string]interface{}{{"uuid": uuid, "password": password}},
 		"congestion_control": "bbr",
 		"tls": map[string]interface{}{
 			"enabled":          true,
@@ -455,8 +508,8 @@ func AddTUIC() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":                  name,
 			"type":                  "tuic",
@@ -473,12 +526,12 @@ func AddTUIC() {
 		AddNodeToYaml(clashProxy)
 
 		link := fmt.Sprintf("tuic://%s:%s@%s:%d?sni=%s&alpn=h3&congestion_control=bbr&udp_relay_mode=native&allow_insecure=1#%s",
-			uuid, password, serverIP, port, serverName, url.QueryEscape(name))
+			uuid, password, linkIP, port, serverName, url.QueryEscape(name))
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
 
-// 7. Shadowsocks 部署逻辑 (纯净 TCP)
+// 7. Shadowsocks 部署逻辑
 func AddShadowsocks() {
 	LogInfo(" 创建 Shadowsocks 节点 ")
 	fmt.Println("1) aes-256-gcm  2) ss-2022")
@@ -490,7 +543,10 @@ func AddShadowsocks() {
 
 	if choice == "2" {
 		method = "2022-blake3-aes-128-gcm"
-		password = GenerateShortID() + GenerateShortID()
+		// SS-2022 需要 16 字节强随机数的 Base64 编码
+		b := make([]byte, 16)
+		rand.Read(b)
+		password = base64.StdEncoding.EncodeToString(b)
 		namePrefix = "SS-2022"
 	}
 
@@ -513,6 +569,7 @@ func AddShadowsocks() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP) // 使用下一步将添加的 IPv6 格式化函数
 
 		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
@@ -525,8 +582,9 @@ func AddShadowsocks() {
 		}
 		AddNodeToYaml(clashProxy)
 
-		link := fmt.Sprintf("ss://%s@%s:%d#%s",
-			url.QueryEscape(method+":"+password), serverIP, port, url.QueryEscape(name))
+		// 修复：使用 Base64 编码 method:password
+		userInfo := base64.StdEncoding.EncodeToString([]byte(method + ":" + password))
+		link := fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, linkIP, port, url.QueryEscape(name))
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
@@ -555,8 +613,8 @@ func AddVLESSTCP() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":    name,
 			"type":    "vless",
@@ -568,7 +626,7 @@ func AddVLESSTCP() {
 		}
 		AddNodeToYaml(clashProxy)
 
-		link := fmt.Sprintf("vless://%s@%s:%d?encryption=none&type=tcp#%s", uuid, serverIP, port, url.QueryEscape(name))
+		link := fmt.Sprintf("vless://%s@%s:%d?encryption=none&type=tcp#%s", uuid, linkIP, port, url.QueryEscape(name))
 		LogSuccess("节点 [%s] 添加成功\n链接: %s\n%s", name, ColorCyan, link)
 	}
 }
@@ -603,8 +661,8 @@ func AddSOCKS5() {
 	if AppendInbound(inbound) == nil {
 		SaveMetadata(tag, map[string]interface{}{"name": name})
 		serverIP := GetPublicIP()
+		linkIP := FormatIPForURI(serverIP)
 
-		// === 同步至 clash.yaml ===
 		clashProxy := map[string]interface{}{
 			"name":     name,
 			"type":     "socks5",
@@ -615,6 +673,6 @@ func AddSOCKS5() {
 		}
 		AddNodeToYaml(clashProxy)
 
-		LogSuccess("SOCKS5 节点 [%s] 添加成功\n地址: %s:%d\n用户: %s\n密码: %s", name, serverIP, port, username, password)
+		LogSuccess("SOCKS5 节点 [%s] 添加成功\n地址: %s:%d\n用户: %s\n密码: %s", name, linkIP, port, username, password)
 	}
 }

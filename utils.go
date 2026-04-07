@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/user"
 	"strings"
 )
@@ -58,9 +57,7 @@ func Pause(prompt string) {
 
 // ClearScreen 清屏
 func ClearScreen() {
-	cmd := exec.Command("clear")
-	cmd.Stdout = os.Stdout
-	cmd.Run()
+	fmt.Print("\033c")
 }
 
 // CheckRoot 替代 _check_root
@@ -70,4 +67,12 @@ func CheckRoot() {
 		LogError("此脚本必须以 root 权限运行。")
 		os.Exit(1)
 	}
+}
+
+// FormatIPForURI 确保纯 IPv6 地址在 URI 中被方括号包裹
+func FormatIPForURI(ip string) string {
+	if strings.Contains(ip, ":") && !strings.HasPrefix(ip, "[") {
+		return "[" + ip + "]"
+	}
+	return ip
 }

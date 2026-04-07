@@ -1,8 +1,38 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 )
+
+// 获取全局客户端 ECH 生成状态
+func GetClientECH() bool {
+	data, err := os.ReadFile("/usr/local/etc/sing-box/metadata.json")
+	if err != nil {
+		return false
+	}
+	var root map[string]interface{}
+	json.Unmarshal(data, &root)
+	if v, ok := root["client_ech_enabled"].(bool); ok {
+		return v
+	}
+	return false
+}
+
+// 写入全局客户端 ECH 生成状态
+func setClientECH(enable bool) {
+	data, _ := os.ReadFile("/usr/local/etc/sing-box/metadata.json")
+	var root map[string]interface{}
+	if len(data) > 0 {
+		json.Unmarshal(data, &root)
+	} else {
+		root = make(map[string]interface{})
+	}
+	root["client_ech_enabled"] = enable
+	out, _ := json.MarshalIndent(root, "", "  ")
+	os.WriteFile("/usr/local/etc/sing-box/metadata.json", out, 0644)
+}
 
 // --- 状态获取辅助函数 ---
 
@@ -83,6 +113,11 @@ func ShowAdvancedMenu() {
 		sDNS := getCurrentDNS(root)
 		sStr := getCurrentStrategy(root)
 
+		sECH := "已关闭"
+		if GetClientECH() {
+			sECH = "已开启"
+		}
+
 		ClearScreen()
 		fmt.Print("\n\n")
 		fmt.Printf("       %sA D V A N C E D   S E T T I N G S%s\n", ColorCyan, ColorReset)
@@ -90,7 +125,8 @@ func ShowAdvancedMenu() {
 
 		fmt.Printf("  %s01.%s 日志等级            %s状态: %s%s%s\n", ColorWhite, ColorReset, ColorReset, ColorYellow, sLog, ColorReset)
 		fmt.Printf("  %s02.%s DNS 模式            %s状态: %s%s%s\n", ColorWhite, ColorReset, ColorReset, ColorYellow, sDNS, ColorReset)
-		fmt.Printf("  %s03.%s IP 策略             %s状态: %s%s%s\n\n", ColorWhite, ColorReset, ColorReset, ColorYellow, sStr, ColorReset)
+		fmt.Printf("  %s03.%s IP 策略             %s状态: %s%s%s\n", ColorWhite, ColorReset, ColorReset, ColorYellow, sStr, ColorReset)
+		fmt.Printf("  %s04.%s 客户端 ECH 注入     %s状态: %s%s%s\n\n", ColorWhite, ColorReset, ColorReset, ColorYellow, sECH, ColorReset)
 
 		fmt.Printf("  %s─────────────────────────────────────────────%s\n", ColorGrey, ColorReset)
 		fmt.Printf("  %s00.%s 返回主菜单\n\n", ColorWhite, ColorReset)
@@ -103,6 +139,8 @@ func ShowAdvancedMenu() {
 			SettingDNS()
 		case "3", "03":
 			SettingStrategy()
+		case "4", "04":
+			SettingECH()
 		case "0", "00":
 			return
 		default:
@@ -113,6 +151,30 @@ func ShowAdvancedMenu() {
 }
 
 // --- 具体设置功能 ---
+
+func SettingECH() {
+	fmt.Printf("\n %s   客户端 ECH 注入设置   %s\n\n", ColorCyan, ColorReset)
+	fmt.Printf("  %s说明:%s 开启后，新生成的 Argo / CF-CDN 节点链接和 yaml 会自动\n", ColorYellow, ColorReset)
+	fmt.Printf("        将 SNI 伪装为 cloudflare-ech.com 进行防阻断保护。\n\n")
+	fmt.Printf("  %s01.%s 开启 ECH 注入\n", ColorWhite, ColorReset)
+	fmt.Printf("  %s02.%s 关闭 ECH 注入\n\n", ColorWhite, ColorReset)
+	fmt.Printf("  %s00. 返回%s\n\n", ColorGrey, ColorReset)
+
+	choice := ReadInput("请选择 [01-02]: ")
+	switch choice {
+	case "1", "01":
+		setClientECH(true)
+		LogSuccess("客户端 ECH 注入已开启 (仅对新生成的 CDN 节点生效)")
+	case "2", "02":
+		setClientECH(false)
+		LogSuccess("客户端 ECH 注入已关闭")
+	case "0", "00":
+		return
+	default:
+		LogError("无效输入")
+	}
+	Pause("按回车键继续...")
+}
 
 func SettingLog() {
 	fmt.Printf("\n %s   日志配置  %s\n\n", ColorCyan, ColorReset)
@@ -186,7 +248,6 @@ func SettingDNS() {
 	root, _ := ReadConfig()
 	root["dns"] = map[string]interface{}{"servers": dnsServers}
 
-	// 保证 route 存在
 	if _, ok := root["route"]; !ok {
 		root["route"] = map[string]interface{}{"final": "direct", "auto_detect_interface": true}
 	}
@@ -239,7 +300,6 @@ func SettingStrategy() {
 		rules = r
 	}
 
-	// 寻找、更新或插入 resolve 规则
 	found := false
 	for i, r := range rules {
 		if rule, isMap := r.(map[string]interface{}); isMap {
@@ -258,7 +318,6 @@ func SettingStrategy() {
 			"strategy":      strategy,
 			"disable_cache": false,
 		}
-		// 将其置于数组首位
 		rules = append([]interface{}{newRule}, rules...)
 	}
 

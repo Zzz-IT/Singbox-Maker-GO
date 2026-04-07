@@ -23,17 +23,23 @@ func ShowMainMenu() {
 
 		fmt.Printf("      %sN E T W O R K   D A S H B O A R D%s\n", ColorCyan, ColorReset)
 
-		// 2. 状态检查
+		// 2. 状态检查 (完全动态读取)
 		serviceStatus := fmt.Sprintf("%s● Stopped%s", ColorRed, ColorReset)
 		if CheckServiceStatus("sing-box") {
 			serviceStatus = fmt.Sprintf("%s● Running%s", ColorGreen, ColorReset)
 		}
 
-		// 这里偷懒简写 Argo 状态，实际你可以去检查进程
-		argoStatus := fmt.Sprintf("%s○ Not Installed%s", ColorGrey, ColorReset)
+		// 动态获取 Argo 状态
+		argoStatus := CheckArgoStatus()
+
+		// 动态获取 系统名称 (如果太长截断以免撑破 UI)
+		osName := GetOSName()
+		if len(osName) > 28 {
+			osName = osName[:25] + "..."
+		}
 
 		fmt.Printf("  %s───────────────────────────────────────────%s\n", ColorGrey, ColorReset)
-		fmt.Printf("   %sSYSTEM:%s %sLinux (Go Engine)%s\n", ColorCyan, ColorReset, ColorWhite, ColorReset)
+		fmt.Printf("   %sSYSTEM:%s %s%s(Go Engine)%s\n", ColorCyan, ColorReset, ColorWhite, osName, ColorReset)
 		fmt.Printf("   %sCORE  :%s %s      %sARGO  :%s %s\n", ColorCyan, ColorReset, serviceStatus, ColorCyan, ColorReset, argoStatus)
 		fmt.Printf("  %s───────────────────────────────────────────%s\n", ColorGrey, ColorReset)
 		fmt.Println()

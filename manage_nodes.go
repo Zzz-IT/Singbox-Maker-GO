@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -175,10 +176,28 @@ func ModifyPort() {
 
 	// 在 JSON 中直接修改指针引用
 	target["listen_port"] = newPort
-	// 简单处理：将 Tag 中的旧端口替换为新端口
-	target["tag"] = strings.Replace(oldTag, fmt.Sprintf("_%d", oldPort), fmt.Sprintf("_%d", newPort), 1)
+	newTag := strings.Replace(oldTag, fmt.Sprintf("_%d", oldPort), fmt.Sprintf("_%d", newPort), 1)
+	target["tag"] = newTag
 
 	WriteConfig(root)
+
+	// --- 修复：同步更新 metadata.json ---
+	metadata := ReadMetadata()
+	var nodeName string = oldTag // 默认 fallback 为老 tag
+	if meta, ok := metadata[oldTag].(map[string]interface{}); ok {
+		if n, ok := meta["name"].(string); ok {
+			nodeName = n // 获取 Clash 中真实的 nodeName
+		}
+		metadata[newTag] = meta  // 转移到新 tag
+		delete(metadata, oldTag) // 删除旧 tag
+
+		outMeta, _ := json.MarshalIndent(metadata, "", "  ")
+		os.WriteFile(MetadataFile, outMeta, 0644)
+	}
+
+	// --- 修复：同步更新 clash.yaml ---
+	UpdateNodePortInYaml(nodeName, newPort)
+
 	LogSuccess("端口已修改: %d -> %d", oldPort, newPort)
 	ManageService("restart")
 }
@@ -312,7 +331,8 @@ func ViewNodes() {
 		case "anytls":
 			urlStr = fmt.Sprintf("anytls://%s@%s:%d?security=tls&sni=%s&insecure=1&allowInsecure=1&type=tcp#%s", password, linkIP, port, sni, safeName)
 		case "shadowsocks":
-			urlStr = fmt.Sprintf("ss://%s@%s:%d#%s", url.QueryEscape(method+":"+password), linkIP, port, safeName)
+			userInfo := base64.StdEncoding.EncodeToString([]byte(method + ":" + password))
+			urlStr = fmt.Sprintf("ss://%s@%s:%d#%s", userInfo, linkIP, port, safeName)
 		case "socks":
 			urlStr = fmt.Sprintf("地址: %s:%d | 用户: %s | 密码: %s", linkIP, port, username, password)
 		}

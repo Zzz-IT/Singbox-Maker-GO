@@ -61,5 +61,5 @@ fi
 # 6. 赋予执行权限
 chmod +x "$BIN_PATH"
 
-echo -e "${GREEN}[成功]${NC} Singbox Maker GO 安装完成！"
+echo -e "${GREEN}[成功]${NC} Singbox Maker Z 安装完成！"
 echo -e "${YELLOW}[提示]${NC} 请在终端直接输入 ${WHITE}sb${NC} ${YELLOW}即可呼出管理菜单。${NC}"

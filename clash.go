@@ -120,3 +120,36 @@ func RemoveNodeFromYaml(nodeName string) {
 	out, _ := yaml.Marshal(root)
 	os.WriteFile(ClashYamlFile, out, 0644)
 }
+
+// UpdateNodePortInYaml 更新 clash.yaml 中指定节点的端口
+func UpdateNodePortInYaml(nodeName string, newPort int) {
+	data, err := os.ReadFile(ClashYamlFile)
+	if err != nil {
+		return
+	}
+
+	var root map[string]interface{}
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return
+	}
+
+	updated := false
+	if proxies, ok := root["proxies"].([]interface{}); ok {
+		for i, p := range proxies {
+			if proxy, isMap := p.(map[string]interface{}); isMap {
+				// Clash 中的 name 可能等于 metadata 中的 name
+				if proxy["name"] == nodeName {
+					proxy["port"] = newPort
+					proxies[i] = proxy
+					updated = true
+					break
+				}
+			}
+		}
+		if updated {
+			root["proxies"] = proxies
+			out, _ := yaml.Marshal(root)
+			os.WriteFile(ClashYamlFile, out, 0644)
+		}
+	}
+}
