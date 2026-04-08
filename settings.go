@@ -10,14 +10,14 @@ import (
 func GetClientECH() bool {
 	data, err := os.ReadFile("/usr/local/etc/sing-box/metadata.json")
 	if err != nil {
-		return false
+		return true // 1. 文件不存在时，默认开启
 	}
 	var root map[string]interface{}
 	json.Unmarshal(data, &root)
 	if v, ok := root["client_ech_enabled"].(bool); ok {
 		return v
 	}
-	return false
+	return true // 2. 字段不存在时，默认开启
 }
 
 // 写入全局客户端 ECH 生成状态
@@ -289,41 +289,25 @@ func SettingStrategy() {
 		return
 	}
 
-	root, _ := ReadConfig()
-	if _, ok := root["route"]; !ok {
-		root["route"] = map[string]interface{}{"final": "direct", "auto_detect_interface": true}
-	}
-	route := root["route"].(map[string]interface{})
-
-	var rules []interface{}
-	if r, ok := route["rules"].([]interface{}); ok {
-		rules = r
+	root, err := ReadConfig()
+	if err != nil {
+		LogError("读取配置失败: %v", err)
+		return
 	}
 
-	found := false
-	for i, r := range rules {
-		if rule, isMap := r.(map[string]interface{}); isMap {
-			if action, ok := rule["action"].(string); ok && action == "resolve" {
-				rule["strategy"] = strategy
-				rules[i] = rule
-				found = true
-				break
-			}
-		}
+	// 完全对照 settings.sh 中的 _setting_strategy 逻辑：
+	// 不再遍历修改 rules，而是直接覆写整个 route 对象
+	root["route"] = map[string]interface{}{
+		"default_domain_resolver": "dns",
+		"final":                   "direct",
+		"rules": []interface{}{
+			map[string]interface{}{
+				"action":        "resolve",
+				"strategy":      strategy,
+				"disable_cache": false,
+			},
+		},
 	}
-
-	if !found {
-		newRule := map[string]interface{}{
-			"action":        "resolve",
-			"strategy":      strategy,
-			"disable_cache": false,
-		}
-		rules = append([]interface{}{newRule}, rules...)
-	}
-
-	route["rules"] = rules
-	route["default_domain_resolver"] = "dns"
-	root["route"] = route
 
 	WriteConfig(root)
 	LogSuccess("出站策略已更新为: %s", strategy)

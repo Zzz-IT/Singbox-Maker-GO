@@ -35,14 +35,35 @@ func CheckServiceStatus(serviceName string) bool {
 }
 
 // ManageService 替代 _manage_service
+// ManageService 替代 _manage_service
 func ManageService(action string) {
+	var err error
+	var out []byte
+
 	if InitSystem == "systemd" {
-		exec.Command("systemctl", action, "sing-box").Run()
+		out, err = exec.Command("systemctl", action, "sing-box").CombinedOutput()
 	} else if InitSystem == "openrc" {
-		exec.Command("rc-service", "sing-box", action).Run()
+		out, err = exec.Command("rc-service", "sing-box", action).CombinedOutput()
 	}
+
+	// 1. 捕获并输出错误信息
+	if err != nil {
+		LogError("sing-box 服务 %s 失败!\n错误详情: %s", action, strings.TrimSpace(string(out)))
+		return
+	}
+
+	// 2. 正常运行则输出成功提示，并顺便把动作汉化一下
 	if action != "status" {
-		LogSuccess("sing-box 服务已 %s", action)
+		actionName := action
+		switch action {
+		case "restart":
+			actionName = "重启"
+		case "start":
+			actionName = "启动"
+		case "stop":
+			actionName = "停止"
+		}
+		LogSuccess("sing-box 服务已%s", actionName)
 	}
 }
 

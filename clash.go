@@ -8,10 +8,22 @@ import (
 
 const ClashYamlFile = "/usr/local/etc/sing-box/clash.yaml"
 
-// InitClashYaml 初始化基础的 Clash 配置模板 (替代原版 _write_default_clash)
+// 定义结构体，严格锁定 clash.yaml 根节点的顺序
+type ClashConfig struct {
+	Port               int                      `yaml:"port"`
+	SocksPort          int                      `yaml:"socks-port"`
+	AllowLan           bool                     `yaml:"allow-lan"`
+	Mode               string                   `yaml:"mode"`
+	LogLevel           string                   `yaml:"log-level"`
+	ExternalController string                   `yaml:"external-controller"`
+	Proxies            []map[string]interface{} `yaml:"proxies"`
+	ProxyGroups        []map[string]interface{} `yaml:"proxy-groups"`
+	Rules              []string                 `yaml:"rules"`
+}
+
 func InitClashYaml() error {
 	if _, err := os.Stat(ClashYamlFile); err == nil {
-		return nil // 文件已存在则跳过
+		return nil
 	}
 
 	defaultTemplate := `port: 7890
@@ -31,9 +43,9 @@ rules:
 	return os.WriteFile(ClashYamlFile, []byte(defaultTemplate), 0644)
 }
 
-// AddNodeToYaml 添加节点到 clash.yaml (替代原版 _add_node_to_yaml)
+// AddNodeToYaml 添加节点
 func AddNodeToYaml(proxy map[string]interface{}) {
-	InitClashYaml() // 确保文件存在
+	InitClashYaml()
 
 	data, err := os.ReadFile(ClashYamlFile)
 	if err != nil {
@@ -41,115 +53,97 @@ func AddNodeToYaml(proxy map[string]interface{}) {
 		return
 	}
 
-	var root map[string]interface{}
+	// 使用结构体解析
+	var root ClashConfig
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		LogError("解析 clash.yaml 失败: %v", err)
 		return
 	}
 
-	// 1. 将节点添加到 proxies 数组
-	proxies, _ := root["proxies"].([]interface{})
-	root["proxies"] = append(proxies, proxy)
+	// 1. 添加到 proxies
+	root.Proxies = append(root.Proxies, proxy)
 
-	// 2. 将节点名称添加到 PROXY 策略组
-	if proxyGroups, ok := root["proxy-groups"].([]interface{}); ok {
-		for i, g := range proxyGroups {
-			if group, isMap := g.(map[string]interface{}); isMap {
-				if group["name"] == "PROXY" {
-					groupProxies, _ := group["proxies"].([]interface{})
-					group["proxies"] = append(groupProxies, proxy["name"])
-					proxyGroups[i] = group
-					break
-				}
+	// 2. 添加到 PROXY 策略组
+	for i, group := range root.ProxyGroups {
+		if group["name"] == "PROXY" {
+			if groupProxies, ok := group["proxies"].([]interface{}); ok {
+				group["proxies"] = append(groupProxies, proxy["name"])
+				root.ProxyGroups[i] = group
 			}
+			break
 		}
-		root["proxy-groups"] = proxyGroups
 	}
 
 	// 3. 写回文件
-	out, _ := yaml.Marshal(root)
+	out, _ := yaml.Marshal(&root)
 	os.WriteFile(ClashYamlFile, out, 0644)
 }
 
-// RemoveNodeFromYaml 从 clash.yaml 中彻底删除节点 (替代原版 _remove_node_from_yaml)
+// RemoveNodeFromYaml 删除节点
 func RemoveNodeFromYaml(nodeName string) {
 	data, err := os.ReadFile(ClashYamlFile)
 	if err != nil {
 		return
 	}
 
-	var root map[string]interface{}
+	var root ClashConfig
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return
 	}
 
 	// 1. 从 proxies 中删除
-	if proxies, ok := root["proxies"].([]interface{}); ok {
-		var newProxies []interface{}
-		for _, p := range proxies {
-			if proxy, isMap := p.(map[string]interface{}); isMap {
-				if proxy["name"] != nodeName {
-					newProxies = append(newProxies, p)
-				}
-			}
+	var newProxies []map[string]interface{}
+	for _, proxy := range root.Proxies {
+		if proxy["name"] != nodeName {
+			newProxies = append(newProxies, proxy)
 		}
-		root["proxies"] = newProxies
 	}
+	root.Proxies = newProxies
 
 	// 2. 从 PROXY 策略组中删除
-	if proxyGroups, ok := root["proxy-groups"].([]interface{}); ok {
-		for i, g := range proxyGroups {
-			if group, isMap := g.(map[string]interface{}); isMap {
-				if group["name"] == "PROXY" {
-					if groupProxies, ok := group["proxies"].([]interface{}); ok {
-						var newGroupProxies []interface{}
-						for _, name := range groupProxies {
-							if name != nodeName {
-								newGroupProxies = append(newGroupProxies, name)
-							}
-						}
-						group["proxies"] = newGroupProxies
-						proxyGroups[i] = group
+	for i, group := range root.ProxyGroups {
+		if group["name"] == "PROXY" {
+			if groupProxies, ok := group["proxies"].([]interface{}); ok {
+				var newGroupProxies []interface{}
+				for _, name := range groupProxies {
+					if name != nodeName {
+						newGroupProxies = append(newGroupProxies, name)
 					}
 				}
+				group["proxies"] = newGroupProxies
+				root.ProxyGroups[i] = group
 			}
 		}
-		root["proxy-groups"] = proxyGroups
 	}
 
-	out, _ := yaml.Marshal(root)
+	out, _ := yaml.Marshal(&root)
 	os.WriteFile(ClashYamlFile, out, 0644)
 }
 
-// UpdateNodePortInYaml 更新 clash.yaml 中指定节点的端口
+// UpdateNodePortInYaml 修改端口
 func UpdateNodePortInYaml(nodeName string, newPort int) {
 	data, err := os.ReadFile(ClashYamlFile)
 	if err != nil {
 		return
 	}
 
-	var root map[string]interface{}
+	var root ClashConfig
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return
 	}
 
 	updated := false
-	if proxies, ok := root["proxies"].([]interface{}); ok {
-		for i, p := range proxies {
-			if proxy, isMap := p.(map[string]interface{}); isMap {
-				// Clash 中的 name 可能等于 metadata 中的 name
-				if proxy["name"] == nodeName {
-					proxy["port"] = newPort
-					proxies[i] = proxy
-					updated = true
-					break
-				}
-			}
+	for i, proxy := range root.Proxies {
+		if proxy["name"] == nodeName {
+			proxy["port"] = newPort
+			root.Proxies[i] = proxy
+			updated = true
+			break
 		}
-		if updated {
-			root["proxies"] = proxies
-			out, _ := yaml.Marshal(root)
-			os.WriteFile(ClashYamlFile, out, 0644)
-		}
+	}
+
+	if updated {
+		out, _ := yaml.Marshal(&root)
+		os.WriteFile(ClashYamlFile, out, 0644)
 	}
 }
