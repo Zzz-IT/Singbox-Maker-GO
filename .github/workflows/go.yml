@@ -6,13 +6,13 @@ on:
       - 'v*'
   workflow_dispatch:
 
+# 【核心修复 1】显式声明权限，允许 Actions 修改仓库内容（创建 Release）
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 【新增】显式声明需要对内容进行写操作，以便发布 Release
-    permissions:
-      contents: write
-    
     strategy:
       matrix:
         goos: [linux]
@@ -26,15 +26,16 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
-          check-latest: true
 
       - name: Build Binary
         run: |
+          # 编译当前目录 (.)，生成 install.sh 识别的文件名
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
           go build -ldflags="-s -w" -o sbgo-${{ matrix.goarch }} .
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
+        # 只有在推送标签 v* 时才上传到 Release
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: sbgo-${{ matrix.goarch }}
