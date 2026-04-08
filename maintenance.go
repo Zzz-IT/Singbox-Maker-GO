@@ -15,7 +15,7 @@ import (
 )
 
 // 在 maintenance.go 顶部定义一个当前版本号（仅用于本地菜单显示）
-const CurrentVersion = "v1.a.a"
+const CurrentVersion = "v1.a.b"
 
 // 定义全局的 HTTP 客户端，增加超时时间到 300 秒，确保大文件下载稳定
 var httpClient = &http.Client{Timeout: 300 * time.Second}
