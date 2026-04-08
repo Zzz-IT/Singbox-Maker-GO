@@ -287,7 +287,7 @@ func deployArgoNode(nodeType string) {
 
 	LogSuccess("Argo 节点 [%s] 部署完成！", name)
 	if echEnabled {
-		fmt.Printf("%s(已开启客户端 ECH 注入保护)%s\n", ColorYellow, ColorReset)
+		fmt.Printf("%s(已开启客户端 ECH )%s\n", ColorYellow, ColorReset)
 	}
 	fmt.Printf("分配域名: %s\n", domain)
 	fmt.Printf("\n%s--- 分享链接 ---%s\n%s%s%s\n", ColorYellow, ColorReset, ColorCyan, link, ColorReset)
