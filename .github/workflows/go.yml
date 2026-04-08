@@ -1,6 +1,5 @@
 name: Build and Release
-
-于:
+on:
   push:
     标签:
       - 'v*' # 当你推送 v1.0.0 等标签时触发
