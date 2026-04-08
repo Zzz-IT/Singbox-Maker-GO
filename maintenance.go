@@ -48,13 +48,16 @@ func CheckConfig() {
 	}
 }
 
+
 // UpdatePanel 更新脚本自身 (自更新逻辑)
 func UpdatePanel() {
 	LogInfo("准备更新面板核心程序...")
 
 	// runtime.GOARCH 会自动返回当前程序编译时的架构 (如 "amd64" 或 "arm64")
 	arch := runtime.GOARCH
-	url := fmt.Sprintf("https://raw.githubusercontent.com/Zzz-IT/singbox-maker-go/main/sbgo-%s", arch)
+	
+	// 【关键修改】将地址指向 GitHub Releases 的最新下载链接
+	url := fmt.Sprintf("https://github.com/Zzz-IT/singbox-maker-go/releases/latest/download/sbgo-%s", arch)
 
 	tmpPath := "/usr/local/bin/sb.tmp"
 
