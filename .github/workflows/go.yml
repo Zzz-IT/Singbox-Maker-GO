@@ -4,9 +4,8 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动点击按钮触发
 
-# 【核心修复 1】显式声明权限，允许 Actions 修改仓库内容（创建 Release）
 permissions:
   contents: write
 
@@ -29,7 +28,6 @@ jobs:
 
       - name: Build Binary
         run: |
-          # 编译当前目录 (.)，生成 install.sh 识别的文件名
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
           go build -ldflags="-s -w" -o sbgo-${{ matrix.goarch }} .
 
@@ -38,6 +36,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: sbgo-${{ matrix.goarch }}
-          overwrite: true  # <--- 添加这一行，强制覆盖同名文件
+          overwrite: true      # 强制覆盖同名文件
+          make_latest: true    # 强制将此 Release 标记为 GitHub 上的 "Latest"
+          prerelease: false    # 确保不是预发布版本
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
