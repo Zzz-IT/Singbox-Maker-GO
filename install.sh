@@ -27,11 +27,11 @@ esac
 
 echo -e "${CYAN}[信息]${NC} 匹配到系统架构: ${WHITE}${GOARCH}${NC}"
 
-# 3. 变量定义 (请确保 Github 仓库路径正确)
+# 3. 变量定义
 REPO="Zzz-IT/singbox-maker-go"
-BRANCH="main"
 BINARY_NAME="sbgo-${GOARCH}"
-DOWNLOAD_URL="https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/${BINARY_NAME}"
+# 修改后的下载地址：直接从 Release 页面下载最新的附件
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
 BIN_PATH="/usr/local/bin/sb"
 
 # 4. 清理可能存在的旧版 Shell 遗留软链接或目录
