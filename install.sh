@@ -9,7 +9,7 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m'
 
-echo -e "${CYAN}[信息]${NC} 正在初始化 Singbox Maker Z (Go 强力驱动版)..."
+echo -e "${CYAN}[信息]${NC} 正在初始化 Singbox Maker GO..."
 
 # 1. 检查 Root 权限
 if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
@@ -61,5 +61,5 @@ fi
 # 6. 赋予执行权限
 chmod +x "$BIN_PATH"
 
-echo -e "${GREEN}[成功]${NC} Singbox Maker Z 安装完成！"
+echo -e "${GREEN}[成功]${NC} Singbox Maker GO 安装完成！"
 echo -e "${YELLOW}[提示]${NC} 请在终端直接输入 ${WHITE}sb${NC} ${YELLOW}即可呼出管理菜单。${NC}"
