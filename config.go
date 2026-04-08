@@ -58,7 +58,7 @@ func SaveMetadata(tag string, meta map[string]interface{}) {
 	root[tag] = meta
 	out, err := json.MarshalIndent(root, "", "  ")
 	if err == nil {
-		if writeErr := os.WriteFile(MetadataFile, out, 0600); writeErr != nil {
+		if writeErr := AtomicWriteFile(MetadataFile, out, 0600); writeErr != nil {
 			LogError("保存元数据文件失败，部分显示信息可能会丢失: %v", writeErr)
 		}
 	} else {
@@ -166,6 +166,6 @@ func CheckAndFillDefaults() {
 
 	if metaModified {
 		out, _ := json.MarshalIndent(metaRoot, "", "  ")
-		os.WriteFile(MetadataFile, out, 0600)
+		AtomicWriteFile(MetadataFile, out, 0600)
 	}
 }

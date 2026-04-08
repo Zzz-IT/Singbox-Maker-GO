@@ -31,7 +31,7 @@ func setClientECH(enable bool) {
 	}
 	root["client_ech_enabled"] = enable
 	out, _ := json.MarshalIndent(root, "", "  ")
-	os.WriteFile("/usr/local/etc/sing-box/metadata.json", out, 0644)
+	AtomicWriteFile("/usr/local/etc/sing-box/metadata.json", out, 0600)
 }
 
 // --- 状态获取辅助函数 ---

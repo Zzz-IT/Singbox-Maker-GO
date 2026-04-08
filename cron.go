@@ -93,7 +93,12 @@ func SetCronJob() {
 	out, _ := exec.Command("crontab", "-l").Output()
 	var newCron bytes.Buffer
 	for _, line := range strings.Split(string(out), "\n") {
-		if line == "" || strings.Contains(line, StartKey) || strings.Contains(line, StopKey) {
+		if line == "" {
+			continue
+		}
+		// 【严谨校验】必须同时包含面板路径和关键字，才视为本面板的任务并剔除
+		isOurTask := strings.Contains(line, CronCmd) && (strings.Contains(line, StartKey) || strings.Contains(line, StopKey))
+		if isOurTask {
 			continue
 		}
 		newCron.WriteString(line + "\n")
@@ -120,12 +125,16 @@ func SetCronJob() {
 	}
 }
 
-// RemoveCronJob 移除定时任务
 func RemoveCronJob() {
 	out, _ := exec.Command("crontab", "-l").Output()
 	var newCron bytes.Buffer
 	for _, line := range strings.Split(string(out), "\n") {
-		if line == "" || strings.Contains(line, StartKey) || strings.Contains(line, StopKey) {
+		if line == "" {
+			continue
+		}
+		// 【严谨校验】只移除本面板的任务，绝不误伤系统其他任务
+		isOurTask := strings.Contains(line, CronCmd) && (strings.Contains(line, StartKey) || strings.Contains(line, StopKey))
+		if isOurTask {
 			continue
 		}
 		newCron.WriteString(line + "\n")

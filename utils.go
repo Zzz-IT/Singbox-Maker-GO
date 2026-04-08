@@ -76,3 +76,14 @@ func FormatIPForURI(ip string) string {
 	}
 	return ip
 }
+
+// AtomicWriteFile 原子化写入文件，防止断电或磁盘满导致文件损坏
+func AtomicWriteFile(filename string, data []byte, perm os.FileMode) error {
+	tmpFile := filename + ".tmp"
+	// 1. 先写入临时文件
+	if err := os.WriteFile(tmpFile, data, perm); err != nil {
+		return err
+	}
+	// 2. 写入成功后，原子级重命名覆盖原文件
+	return os.Rename(tmpFile, filename)
+}

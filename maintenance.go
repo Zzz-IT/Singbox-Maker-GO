@@ -11,7 +11,11 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
+
+// 定义全局的 HTTP 客户端，设置 15 秒超时，防止无限挂起
+var httpClient = &http.Client{Timeout: 15 * time.Second}
 
 // GithubRelease 用于解析 GitHub API 返回的 JSON
 type GithubRelease struct {
@@ -80,7 +84,7 @@ func UpdateCore() {
 	LogInfo("准备更新 Sing-box 核心程序...")
 
 	// 1. 通过 GitHub API 获取最新版本号
-	resp, err := http.Get("https://api.github.com/repos/SagerNet/sing-box/releases/latest")
+	resp, err := httpClient.Get("https://api.github.com/repos/SagerNet/sing-box/releases/latest")
 	if err != nil {
 		LogError("获取最新版本号失败: %v", err)
 		return
@@ -155,7 +159,7 @@ func Uninstall() {
 
 // downloadFile 用于简单的单一文件下载
 func downloadFile(filepath string, url string) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}
@@ -177,7 +181,7 @@ func downloadFile(filepath string, url string) error {
 
 // downloadAndExtractGz 直接从流中解压提取单个目标文件，极其节省内存
 func downloadAndExtractGz(url, destPath, targetFilename string) error {
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return err
 	}

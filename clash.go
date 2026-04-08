@@ -40,7 +40,7 @@ proxy-groups:
 rules:
   - MATCH,PROXY
 `
-	return os.WriteFile(ClashYamlFile, []byte(defaultTemplate), 0644)
+	return AtomicWriteFile(ClashYamlFile, []byte(defaultTemplate), 0644)
 }
 
 // AddNodeToYaml 添加节点
@@ -76,7 +76,7 @@ func AddNodeToYaml(proxy map[string]interface{}) {
 
 	// 3. 写回文件
 	out, _ := yaml.Marshal(&root)
-	os.WriteFile(ClashYamlFile, out, 0644)
+	AtomicWriteFile(ClashYamlFile, out, 0644)
 }
 
 // RemoveNodeFromYaml 删除节点
@@ -117,7 +117,7 @@ func RemoveNodeFromYaml(nodeName string) {
 	}
 
 	out, _ := yaml.Marshal(&root)
-	os.WriteFile(ClashYamlFile, out, 0644)
+	AtomicWriteFile(ClashYamlFile, out, 0644)
 }
 
 // UpdateNodePortInYaml 修改端口
@@ -144,6 +144,6 @@ func UpdateNodePortInYaml(nodeName string, newPort int) {
 
 	if updated {
 		out, _ := yaml.Marshal(&root)
-		os.WriteFile(ClashYamlFile, out, 0644)
+		AtomicWriteFile(ClashYamlFile, out, 0644)
 	}
 }

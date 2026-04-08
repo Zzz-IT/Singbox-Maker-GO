@@ -28,18 +28,7 @@ func WriteConfig(root map[string]interface{}) error {
 	if err != nil {
 		return fmt.Errorf("JSON 编码失败: %v", err)
 	}
-
-	tmpFile := ConfigFile + ".tmp"
-	// 1. 先写入临时文件
-	if err := os.WriteFile(tmpFile, out, 0600); err != nil {
-		return fmt.Errorf("写入临时配置失败: %v", err)
-	}
-
-	// 2. 写入成功后，原子级重命名覆盖原文件
-	if err := os.Rename(tmpFile, ConfigFile); err != nil {
-		return fmt.Errorf("替换原配置文件失败: %v", err)
-	}
-	return nil
+	return AtomicWriteFile(ConfigFile, out, 0600)
 }
 
 // DeleteNode 替代原版的 _delete_node
