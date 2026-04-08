@@ -34,66 +34,61 @@ func CheckServiceStatus(serviceName string) bool {
 	return false
 }
 
-// ManageService 具备进程级自愈能力的服务管理器
+// ManageService 具备彻底清理能力的稳妥服务管理器
 func ManageService(action string) {
 	var err error
 	var out []byte
+	originalAction := action
 
-	// 首次尝试执行服务命令
+	// 如果动作是 restart 或 stop，第一步都是“优雅停止 + 强制补刀清理”
+	if action == "restart" || action == "stop" {
+		// 1. 尝试正常停止服务
+		if InitSystem == "systemd" {
+			exec.Command("systemctl", "stop", "sing-box").Run()
+		} else if InitSystem == "openrc" {
+			exec.Command("rc-service", "sing-box", "stop").Run()
+		}
+
+		// 2. 深度清理：干掉所有残留进程、清掉锁文件、重置系统状态
+		exec.Command("pkill", "-9", "-f", "sing-box").Run()
+		os.Remove("/var/run/sing-box.pid")
+		if InitSystem == "openrc" {
+			exec.Command("rc-service", "sing-box", "zap").Run()
+		} else if InitSystem == "systemd" {
+			exec.Command("systemctl", "reset-failed", "sing-box").Run()
+		}
+
+		// 3. 动作分流
+		if action == "stop" {
+			// 如果用户的目的只是停止，清理完就可以直接宣告成功并返回了
+			LogSuccess("sing-box 服务已停止")
+			return
+		} else {
+			// 如果用户的目的是重启，清理完后将接下来的动作替换为启动
+			action = "start"
+		}
+	}
+
+	// 此时只会剩下 start 或 status 动作需要向系统发送指令
 	if InitSystem == "systemd" {
 		out, err = exec.Command("systemctl", action, "sing-box").CombinedOutput()
 	} else if InitSystem == "openrc" {
 		out, err = exec.Command("rc-service", "sing-box", action).CombinedOutput()
 	}
 
-	// ==========================================
-	// 拦截错误并执行自动化自愈 (Self-Healing)
-	// ==========================================
+	// 错误处理与输出
 	if err != nil {
-		// 如果是启动或重启失败，极大概率是僵尸进程/锁文件导致
-		if action == "start" || action == "restart" {
-			LogWarn("检测到系统进程管理异常，面板正在触发自动自愈清理机制...")
-
-			// 1. 暴力清理所有残留进程
-			exec.Command("pkill", "-9", "-f", "sing-box").Run()
-
-			// 2. 清理可能残留的 PID 锁文件
-			os.Remove("/var/run/sing-box.pid")
-
-			// 3. 重置系统服务管理器的状态
-			if InitSystem == "openrc" {
-				exec.Command("rc-service", "sing-box", "zap").Run()
-			} else if InitSystem == "systemd" {
-				exec.Command("systemctl", "reset-failed", "sing-box").Run()
-			}
-
-			LogInfo("残留环境清理完成，正在重新尝试 %s...", action)
-
-			// 4. 第二次尝试执行服务命令
-			if InitSystem == "systemd" {
-				out, err = exec.Command("systemctl", action, "sing-box").CombinedOutput()
-			} else if InitSystem == "openrc" {
-				out, err = exec.Command("rc-service", "sing-box", action).CombinedOutput()
-			}
-		}
-
-		// 如果抢救之后依然失败，再向用户报错
-		if err != nil {
-			LogError("sing-box 服务 %s 彻底失败!\n错误详情: %s", action, strings.TrimSpace(string(out)))
-			return
-		}
+		LogError("sing-box 服务 %s 失败!\n错误详情: %s", originalAction, strings.TrimSpace(string(out)))
+		return
 	}
 
-	// 正常运行则输出成功提示，并顺便把动作汉化一下
-	if action != "status" {
-		actionName := action
-		switch action {
-		case "restart":
-			actionName = "重启"
-		case "start":
+	// 成功提示汉化
+	if originalAction != "status" {
+		actionName := originalAction
+		if originalAction == "start" {
 			actionName = "启动"
-		case "stop":
-			actionName = "停止"
+		} else if originalAction == "restart" {
+			actionName = "重启"
 		}
 		LogSuccess("sing-box 服务已%s", actionName)
 	}
