@@ -3,16 +3,20 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # 当推送 v1.0.0 等标签时触发
-  workflow_dispatch: # 支持手动触发
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 【新增】显式声明需要对内容进行写操作，以便发布 Release
+    permissions:
+      contents: write
+    
     strategy:
       matrix:
         goos: [linux]
-        goarch: [amd64, arm64] # 对应 install.sh 中识别的架构
+        goarch: [amd64, arm64]
 
     steps:
       - name: Checkout code
@@ -21,13 +25,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21' # 虽然 go.mod 写了 1.26，但目前稳定版建议用 1.21+
+          go-version: '1.21'
           check-latest: true
 
       - name: Build Binary
         run: |
-          # 修复了原代码中的 ".go" 路径错误，改为编译当前目录
-          # CGO_ENABLED=0 确保静态链接，提高跨系统兼容性
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
           go build -ldflags="-s -w" -o sbgo-${{ matrix.goarch }} .
 
@@ -35,7 +37,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          # 修复了原代码中的中文键名 "文件"
           files: sbgo-${{ matrix.goarch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
