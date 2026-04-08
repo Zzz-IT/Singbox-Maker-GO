@@ -155,13 +155,13 @@ func parseTimeMatch(match []string) (int, int) {
 // DoScheduledStart 供 crontab 调用的后台启动方法
 func DoScheduledStart() {
 	ManageService("start")
-	// 你可以在这里补充唤醒 Argo 隧道的逻辑 (类似于之前写在 argo.go 中的函数)
+	RestartAllArgoTunnels() // 修复：补充被遗漏的 Argo 隧道唤醒逻辑
 	LogSuccess("[Cron] 执行定时启动任务完成")
 }
 
 // DoScheduledStop 供 crontab 调用的后台停止方法
 func DoScheduledStop() {
 	ManageService("stop")
-	exec.Command("pkill", "-f", "cloudflared").Run() // 一并停掉所有的 Argo
+	StopAllArgoTunnels() // 修复：使用系统正规的 stop 指令，避免触发 Restart=always 复活
 	LogSuccess("[Cron] 执行定时停止任务完成")
 }
