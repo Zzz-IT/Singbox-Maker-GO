@@ -53,53 +53,34 @@ func CheckConfig() {
 
 
 
+// maintenance.go
 func UpdatePanel() {
-	LogInfo("正在检查面板更新...")
+	LogInfo("准备更新面板核心程序...")
 
-	// 1. 获取 GitHub 上的最新版本号
-	resp, err := httpClient.Get("https://api.github.com/repos/Zzz-IT/singbox-maker-go/releases/latest")
-	if err != nil {
-		LogError("获取版本信息失败: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	var release GithubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		LogError("解析版本信息失败")
-		return
-	}
-
-	// 2. 比对版本
-	if release.TagName == CurrentVersion {
-		LogSuccess("当前已是最新版本 (%s)，无需更新。", CurrentVersion)
-		return
-	}
-
-	LogInfo("检测到新版本: %s (当前: %s)，准备更新...", release.TagName, CurrentVersion)
-
-	// 3. 拼接 Release 下载地址
 	arch := runtime.GOARCH
-	// 【修复的关键地址】指向 Release 下载链接
+	// 【修正点 1】修改为正确的 Release 下载地址
 	url := fmt.Sprintf("https://github.com/Zzz-IT/singbox-maker-go/releases/latest/download/sbgo-%s", arch)
 
 	tmpPath := "/usr/local/bin/sb.tmp"
 
-	// 4. 执行下载
+	LogInfo("正在获取最新版本 (架构: %s)...", arch)
 	if err := downloadFile(tmpPath, url); err != nil {
-		LogError("下载更新失败: %v", err)
+		LogError("面板下载失败: %v", err)
+		Pause("按回车键返回...") // 失败也停留一下
 		return
 	}
 
-	// 5. 权限与替换
 	os.Chmod(tmpPath, 0755)
+
 	if err := os.Rename(tmpPath, "/usr/local/bin/sb"); err != nil {
-		LogError("替换程序失败: %v", err)
+		LogError("覆盖旧文件失败: %v", err)
+		Pause("按回车键返回...")
 		return
 	}
 
-	LogSuccess("面板已成功更新至 %s！", release.TagName)
-	LogInfo("程序即将退出，请重新输入 'sb' 进入。")
+	LogSuccess("面板更新完成！")
+	// 【修正点 2】在退出前增加 Pause，让信息停留
+	Pause("面板已更新，按回车键退出后请重新输入 'sb' 进入。")
 	os.Exit(0)
 }
 
@@ -152,6 +133,8 @@ func UpdateCore() {
 	}
 
 	ManageService("start")
+	// 【修正点 3】增加暂停，防止回到菜单时被 ClearScreen() 冲掉提示
+	Pause("按回车键返回维护菜单...")
 }
 
 // Uninstall 卸载程序
