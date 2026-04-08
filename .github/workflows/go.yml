@@ -35,9 +35,9 @@ jobs:
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
-        # 只有在推送标签 v* 时才上传到 Release
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: sbgo-${{ matrix.goarch }}
+          overwrite: true  # <--- 添加这一行，强制覆盖同名文件
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
