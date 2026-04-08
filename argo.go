@@ -163,7 +163,7 @@ func deployArgoNode(nodeType string) {
 			LogError("固定隧道必须提供 Token 和域名")
 			return
 		}
-		LogWarn("注意: 固定隧道需在 Cloudflare 仪表盘中将路由指向 http://127.0.0.1:%d", port)
+		LogWarn("注意: 固定隧道需在 Cloudflare 仪表盘中将路由指向 http://localhost:%d", port)
 	}
 
 	// 3. 构建本地入站配置 (绑定 127.0.0.1，不暴露公网，无需本地 TLS)
