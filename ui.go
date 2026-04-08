@@ -105,7 +105,6 @@ func ShowMainMenu() {
 			UpdatePanel() // <--- 更新脚本与核心复用逻辑
 		case "14":
 			UpdateCore() // <--- 挂载更新核心
-			Pause("按回车键返回主菜单...")
 		case "15":
 			Uninstall() // <--- 挂载卸载程序
 		case "0", "00":
