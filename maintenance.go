@@ -13,13 +13,14 @@ import (
 	"strings"
 	"time"
 )
-// 在 maintenance.go 或 main.go 顶部定义一个当前版本号
-const CurrentVersion = "v1.a.a" 
 
-// 定义全局的 HTTP 客户端，设置 15 秒超时，防止无限挂起
-var httpClient = &http.Client{Timeout: 15 * time.Second}
+// 在 maintenance.go 顶部定义一个当前版本号（仅用于本地菜单显示）
+const CurrentVersion = "v1.a.a"
 
-// GithubRelease 用于解析 GitHub API 返回的 JSON
+// 定义全局的 HTTP 客户端，增加超时时间到 300 秒，确保大文件下载稳定
+var httpClient = &http.Client{Timeout: 300 * time.Second}
+
+// GithubRelease 用于静默解析 Sing-box 核心的文件名
 type GithubRelease struct {
 	TagName string `json:"tag_name"`
 }
@@ -50,23 +51,19 @@ func CheckConfig() {
 	}
 }
 
-
-
-
-// maintenance.go
+// UpdatePanel 采用固定最新链接更新面板程序，不依赖 API 解析
 func UpdatePanel() {
-	LogInfo("准备更新面板核心程序...")
+	LogInfo("正在从 GitHub 拉取最新面板程序...")
 
 	arch := runtime.GOARCH
-	// 【修正点 1】修改为正确的 Release 下载地址
+	// 直接拼接 GitHub 固定最新 Release 下载地址
 	url := fmt.Sprintf("https://github.com/Zzz-IT/singbox-maker-go/releases/latest/download/sbgo-%s", arch)
 
 	tmpPath := "/usr/local/bin/sb.tmp"
 
-	LogInfo("正在获取最新版本 (架构: %s)...", arch)
 	if err := downloadFile(tmpPath, url); err != nil {
 		LogError("面板下载失败: %v", err)
-		Pause("按回车键返回...") // 失败也停留一下
+		Pause("按回车键返回...")
 		return
 	}
 
@@ -79,61 +76,57 @@ func UpdatePanel() {
 	}
 
 	LogSuccess("面板更新完成！")
-	// 【修正点 2】在退出前增加 Pause，让信息停留
 	Pause("面板已更新，按回车键退出后请重新输入 'sb' 进入。")
 	os.Exit(0)
 }
 
-// UpdateCore 零依赖提取并更新 Sing-box 核心
+// UpdateCore 零依赖提取并更新 Sing-box 核心（静默处理版本）
 func UpdateCore() {
-	LogInfo("准备更新 Sing-box 核心程序...")
+	LogInfo("正在静默同步 Sing-box 核心组件...")
 
-	// 1. 通过 GitHub API 获取最新版本号
-	resp, err := httpClient.Get("https://api.github.com/repos/SagerNet/sing-box/releases/latest")
+	// 1. 内部静默获取最新版本以确定文件名（Sing-box 官方包名包含版本号，必须通过此步骤获取）
+	req, _ := http.NewRequest("GET", "https://api.github.com/repos/SagerNet/sing-box/releases/latest", nil)
+	req.Header.Set("User-Agent", "Singbox-Maker-GO")
+	
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		LogError("获取最新版本号失败: %v", err)
+		LogError("获取核心信息失败: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	var release GithubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		LogError("解析版本号失败")
+		LogError("解析核心信息失败")
 		return
 	}
 
 	version := strings.TrimPrefix(release.TagName, "v")
-	LogInfo("检测到 sing-box 最新版本: %s", version)
 
 	// 2. 拼接下载 URL
 	arch := runtime.GOARCH
-	// Sing-box 官方包名采用标准 GOARCH，例如 sing-box-1.8.0-linux-amd64.tar.gz
 	url := fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/v%s/sing-box-%s-linux-%s.tar.gz", version, version, arch)
 
-	// 3. 停止当前服务以释放内存和解除文件占用
+	// 3. 停止服务并替换
 	ManageService("stop")
 
-	LogInfo("正在纯内存解压核心文件，请稍候...")
-
-	// 【新增修复】先下载到临时路径
+	LogInfo("正在纯内存解压核心文件...")
 	tmpPath := "/usr/local/bin/sing-box.tmp"
 	if err := downloadAndExtractGz(url, tmpPath, "sing-box"); err != nil {
-		LogError("核心更新失败，网络中断或压缩包损坏: %v", err)
-		os.Remove(tmpPath)     // 清理可能残缺的临时文件
-		ManageService("start") // 恢复旧版本核心运行
+		LogError("核心更新失败: %v", err)
+		os.Remove(tmpPath)
+		ManageService("start")
 		return
 	}
 
-	// 【新增修复】下载成功后，赋予权限并替换原文件
 	os.Chmod(tmpPath, 0755)
 	if err := os.Rename(tmpPath, "/usr/local/bin/sing-box"); err != nil {
 		LogError("替换核心文件失败: %v", err)
 	} else {
-		LogSuccess("核心更新完成")
+		LogSuccess("核心同步完成")
 	}
 
 	ManageService("start")
-	// 【修正点 3】增加暂停，防止回到菜单时被 ClearScreen() 冲掉提示
 	Pause("按回车键返回维护菜单...")
 }
 
@@ -153,20 +146,18 @@ func Uninstall() {
 	os.Remove("/usr/local/bin/cloudflared")
 	exec.Command("pkill", "-f", "cloudflared").Run()
 
-	// 删除自己
 	os.Remove("/usr/local/bin/sb")
 
 	LogSuccess("卸载完成，感谢使用！")
 	os.Exit(0)
 }
 
-// =====================================
-// 底层辅助函数: 零依赖网络与解压流处理
-// =====================================
-
-// downloadFile 用于简单的单一文件下载
+// downloadFile 增加 User-Agent 支持和稳定性优化
 func downloadFile(filepath string, url string) error {
-	resp, err := httpClient.Get(url)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "Singbox-Maker-GO")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -186,9 +177,12 @@ func downloadFile(filepath string, url string) error {
 	return err
 }
 
-// downloadAndExtractGz 直接从流中解压提取单个目标文件，极其节省内存
+// downloadAndExtractGz 直接从流中解压提取单个目标文件
 func downloadAndExtractGz(url, destPath, targetFilename string) error {
-	resp, err := httpClient.Get(url)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("User-Agent", "Singbox-Maker-GO")
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -208,13 +202,12 @@ func downloadAndExtractGz(url, destPath, targetFilename string) error {
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
-			break // 读到压缩包末尾
+			break
 		}
 		if err != nil {
 			return err
 		}
 
-		// 匹配特定的文件名 (跳过外层文件夹结构)
 		if header.Typeflag == tar.TypeReg && (strings.HasSuffix(header.Name, "/"+targetFilename) || header.Name == targetFilename) {
 			out, err := os.Create(destPath)
 			if err != nil {
