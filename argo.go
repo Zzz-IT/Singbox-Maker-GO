@@ -155,7 +155,7 @@ func deployArgoNode(nodeType string) {
 		token = extractArgoToken(rawTokenInput)
 
 		if token != "" && token != rawTokenInput {
-			LogSuccess("已自动为您提取出纯 Token！")
+			LogSuccess("已自动提取出纯 Token！")
 		}
 
 		fixedDomain = ReadInput("请输入绑定的域名 (如 argo.xxx.com): ")
