@@ -46,18 +46,18 @@ func ShowMainMenu() {
 
 		// 3. 菜单选项区
 		fmt.Printf("    %sNODE MANAGER%s\n", ColorCyan, ColorReset)
-		fmt.Printf("    %s01.%s 添加节点            %s02.%s Argo 隧道\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
+		fmt.Printf("    %s01.%s 添加节点            %s02.%s Argo隧道\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 		fmt.Printf("    %s03.%s 查看链接            %s04.%s 删除节点\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 		fmt.Printf("    %s05.%s 修改端口\n\n", ColorWhite, ColorReset)
 
 		fmt.Printf("    %sSERVICE CONTROL%s\n", ColorCyan, ColorReset)
 		fmt.Printf("    %s06.%s 重启服务            %s07.%s 停止服务\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 		fmt.Printf("    %s08.%s 运行状态            %s09.%s 实时日志\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
-		fmt.Printf("    %s10.%s 定时启停            %s11.%s 高级配置\n\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
+		fmt.Printf("    %s10.%s 定时启停            %s11.%s 高级设置\n\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
 
 		fmt.Printf("    %sMAINTENANCE%s\n", ColorCyan, ColorReset)
-		fmt.Printf("    %s12.%s 检查配置            %s13.%s 更新脚本\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
-		fmt.Printf("    %s14.%s 更新核心            %s15.%s 卸载程序\n", ColorWhite, ColorReset, ColorRed, ColorReset)
+		fmt.Printf("    %s12.%s 检查配置            %s13.%s 更新程序\n", ColorWhite, ColorReset, ColorWhite, ColorReset)
+		fmt.Printf("    %s14.%s 更新核心            %s15.%s 卸载所有\n", ColorWhite, ColorReset, ColorRed, ColorReset)
 
 		fmt.Printf("\n  %s───────────────────────────────────────────%s\n", ColorGrey, ColorReset)
 		fmt.Printf("    %s00.%s 退出脚本\n\n", ColorWhite, ColorReset)
