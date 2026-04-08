@@ -536,10 +536,21 @@ func RestartAllArgoTunnels() {
 
 	LogInfo("正在通过系统服务重新启动隧道...")
 	successCount := 0
-	for _, v := range metaRoot {
+	for tag, v := range metaRoot {
 		meta := v.(map[string]interface{})
 		port := int(meta["local_port"].(float64))
 		serviceName := fmt.Sprintf("argo-%d", port)
+		tunnelType, _ := meta["tunnel_type"].(string)
+		logFile := fmt.Sprintf("/usr/local/etc/sing-box/argo_%d.log", port)
+
+		// 修复：如果是临时隧道，重启前必须清理旧日志，否则会抓取到上一轮的旧域名
+		if tunnelType == "temp" {
+			os.Remove(logFile)
+			if f, err := os.Create(logFile); err == nil {
+				f.Close()
+				os.Chmod(logFile, 0666)
+			}
+		}
 
 		var err error
 		if InitSystem == "systemd" {
@@ -549,10 +560,42 @@ func RestartAllArgoTunnels() {
 		}
 
 		if err == nil {
-			LogSuccess("隧道服务 [%s] 重启成功！", serviceName)
 			successCount++
+			// 修复：针对临时隧道，重启后重新轮询抓取新的域名并更新元数据
+			if tunnelType == "temp" {
+				LogInfo("正在等待 Cloudflare 分配新临时域名...")
+				re := regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
+				newDomain := ""
+				for i := 0; i < 30; i++ {
+					time.Sleep(500 * time.Millisecond)
+					content, err := os.ReadFile(logFile)
+					if err == nil {
+						if match := re.FindString(string(content)); match != "" {
+							newDomain = strings.TrimPrefix(match, "https://")
+							break
+						}
+					}
+				}
+
+				if newDomain != "" {
+					meta["domain"] = newDomain
+					metaRoot[tag] = meta
+					LogSuccess("临时隧道服务 [%s] 重启成功！分配新域名: %s", serviceName, newDomain)
+				} else {
+					LogError("临时隧道服务 [%s] 重启成功，但获取新域名超时！", serviceName)
+				}
+			} else {
+				LogSuccess("固定隧道服务 [%s] 重启成功！", serviceName)
+			}
+		} else {
+			LogError("隧道服务 [%s] 重启失败！", serviceName)
 		}
 	}
+
+	// 修复：将抓取到的新域名写回配置文件，防止后续“查看节点详情”时依然显示死域名
+	out, _ := json.MarshalIndent(metaRoot, "", "  ")
+	os.WriteFile(ArgoMetadataFile, out, 0644)
+
 	LogSuccess("操作完成！成功重启 %d 个隧道服务。", successCount)
 }
 
