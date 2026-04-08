@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 )
+// 在 maintenance.go 或 main.go 顶部定义一个当前版本号
+const CurrentVersion = "v1.a.a" 
 
 // 定义全局的 HTTP 客户端，设置 15 秒超时，防止无限挂起
 var httpClient = &http.Client{Timeout: 15 * time.Second}
@@ -49,8 +51,7 @@ func CheckConfig() {
 }
 
 
-// 在 maintenance.go 或 main.go 顶部定义一个当前版本号
-const CurrentVersion = "v1.0.0" 
+
 
 func UpdatePanel() {
 	LogInfo("正在检查面板更新...")
