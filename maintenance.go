@@ -21,7 +21,7 @@ const CurrentVersion = "v1.a.b"
 var httpClient = &http.Client{Timeout: 300 * time.Second}
 
 // GithubRelease 用于静默解析 Sing-box 核心的文件名
-type GithubRelease struct {
+输入 GithubRelease struct {
 	TagName string `json:"tag_name"`
 }
 
@@ -116,6 +116,10 @@ func UpdateCore() {
 		LogError("核心更新失败: %v", err)
 		os.Remove(tmpPath)
 		ManageService("start")
+		// 只在交互模式下暂停
+		if isInteractive {
+			Pause("按回车键返回维护菜单...")
+		}
 		return
 	}
 
@@ -127,7 +131,11 @@ func UpdateCore() {
 	}
 
 	ManageService("start")
-	Pause("按回车键返回维护菜单...")
+	
+	// 只在手动点击菜单更新时暂停，避免初始化时卡死
+	if isInteractive {
+		Pause("按回车键返回维护菜单...")
+	}
 }
 
 // Uninstall 卸载程序
