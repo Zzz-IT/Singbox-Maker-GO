@@ -21,7 +21,7 @@ const CurrentVersion = "v1.a.b"
 var httpClient = &http.Client{Timeout: 300 * time.Second}
 
 // GithubRelease 用于静默解析 Sing-box 核心的文件名
-输入 GithubRelease struct {
+type GithubRelease struct {
 	TagName string `json:"tag_name"`
 }
 
