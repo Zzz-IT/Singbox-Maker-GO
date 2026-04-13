@@ -104,7 +104,7 @@ func ShowMainMenu() {
 		case "13":
 			UpdatePanel() // <--- 更新脚本与核心复用逻辑
 		case "14":
-			UpdateCore() // <--- 挂载更新核心
+			UpdateCore(true)// <--- 挂载更新核心
 		case "15":
 			Uninstall() // <--- 挂载卸载程序
 		case "0", "00":
