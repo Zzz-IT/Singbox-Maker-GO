@@ -81,7 +81,7 @@ func UpdatePanel() {
 }
 
 // UpdateCore 零依赖提取并更新 Sing-box 核心（静默处理版本）
-func UpdateCore() {
+func UpdateCore(isInteractive bool) {
 	LogInfo("正在静默同步 Sing-box 核心组件...")
 
 	// 1. 内部静默获取最新版本以确定文件名（Sing-box 官方包名包含版本号，必须通过此步骤获取）
