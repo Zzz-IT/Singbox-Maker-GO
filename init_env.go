@@ -40,7 +40,7 @@ func InitRuntime() {
 	GenerateServiceFiles()
 
 	// 5. 检查 Sing-box 核心是否存在且有效 (防止0字节坏文件欺骗系统)
-	fileInfo, err := os。Stat("/usr/local/bin/sing-box")
+	fileInfo, err := os.Stat("/usr/local/bin/sing-box")
 	// 如果文件不存在、是个被误创的文件夹、或者文件大小异常(小于1MB)，则重新拉取
 	if os.IsNotExist(err) || fileInfo.IsDir() || fileInfo.Size() < 1024*1024 {
 		LogInfo("检测到核心文件缺失或损坏，正在自动拉取 Sing-box 核心组件...")
