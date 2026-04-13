@@ -10,17 +10,21 @@ func InitRuntime() {
 	// 1. 识别初始化系统 (systemd 或 openrc)
 	DetectInitSystem()
 
-	// 2. 修复 Alpine 环境兼容性 (补全 glibc 兼容层)
+	// ================= 修改开始 =================
+	// 2. 修复 Alpine 环境兼容性 (独立安装证书与兼容层)
 	if _, err := os.Stat("/sbin/apk"); err == nil {
+		// 独立且强制安装网络请求必要的证书和时区数据，防止 GitHub API 请求因 HTTPS 报错
+		LogInfo("检测到 Alpine Linux，正在确保系统根证书已安装...")
+		exec.Command("apk", "add", "--no-cache", "ca-certificates", "tzdata").Run()
+
 		// 检查是否已经安装 gcompat，如果没有则静默安装
 		if err := exec.Command("apk", "info", "-e", "gcompat").Run(); err != nil {
-			LogInfo("检测到 Alpine Linux，正在静默安装兼容性依赖 (gcompat)...")
-			if err := exec.Command("apk", "add", "--no-cache", "gcompat", "ca-certificates", "tzdata").Run(); err != nil {
-				LogError("Alpine 依赖安装失败，可能导致核心无法运行: %v", err)
+			LogInfo("正在静默安装 glibc 兼容层 (gcompat)...")
+			if err := exec.Command("apk", "add", "--no-cache", "gcompat").Run(); err != nil {
+				LogError("gcompat 安装失败，可能导致核心无法运行: %v", err)
 			}
 		}
 	}
-
 	// 3. 确保配置目录和基础配置文件存在
 	if err := os.MkdirAll("/usr/local/etc/sing-box", 0755); err != nil {
 		LogError("创建配置目录失败，请检查系统权限: %v", err)
@@ -35,10 +39,12 @@ func InitRuntime() {
 	// 4. 检查并生成系统守护服务文件 (Systemd / OpenRC)
 	GenerateServiceFiles()
 
-	// 5. 检查 Sing-box 核心是否存在，不存在则自动下载
-	if _, err := os.Stat("/usr/local/bin/sing-box"); os.IsNotExist(err) {
-		LogInfo("初次运行，正在自动拉取 Sing-box 核心组件...")
-		UpdateCore()
+	// 5. 检查 Sing-box 核心是否存在且有效 (防止0字节坏文件欺骗系统)
+	fileInfo, err := os。Stat("/usr/local/bin/sing-box")
+	// 如果文件不存在、是个被误创的文件夹、或者文件大小异常(小于1MB)，则重新拉取
+	if os.IsNotExist(err) || fileInfo.IsDir() || fileInfo.Size() < 1024*1024 {
+		LogInfo("检测到核心文件缺失或损坏，正在自动拉取 Sing-box 核心组件...")
+		UpdateCore(false) // 传入 false 代表这是后台自动初始化，不需要按回车暂停
 	}
 }
 
