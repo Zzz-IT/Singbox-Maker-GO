@@ -503,11 +503,14 @@ WantedBy=multi-user.target
 description="Argo Tunnel for Port %d"
 command="/bin/sh"
 command_args="-c 'GOMEMLIMIT=50MiB GOGC=50 exec %s >> %s 2>&1'"
-command_background="yes"
+supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=0
 pidfile="/run/%s.pid"
 
 depend() {
     need net
+    use dns
 }
 `, port, cmdStr, logFile, serviceName)
 
