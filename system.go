@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -126,9 +127,32 @@ func CheckArgoStatus() string {
 		return fmt.Sprintf("%s○ Not Installed%s", ColorGrey, ColorReset)
 	}
 
-	// 2. 检查是否有进程在运行
-	// 修复：将 -f 改为 -x (精确匹配进程名)，防止误命中残留脚本
-	cmd := exec.Command("pgrep", "-x", "cloudflared")
+	// 2. 精确读取已配置的隧道系统守护服务状态 (直接问系统服务最稳妥)
+	data, err := os.ReadFile("/usr/local/etc/sing-box/argo_metadata.json")
+	if err == nil && len(data) > 0 {
+		var metaRoot map[string]interface{}
+		if json.Unmarshal(data, &metaRoot) == nil && len(metaRoot) > 0 {
+			runningCount := 0
+			for _, v := range metaRoot {
+				if meta, ok := v.(map[string]interface{}); ok {
+					if portF, ok := meta["local_port"].(float64); ok {
+						serviceName := fmt.Sprintf("argo-%d", int(portF))
+						// 直接调用系统底层服务状态查询
+						if CheckServiceStatus(serviceName) {
+							runningCount++
+						}
+					}
+				}
+			}
+			if runningCount > 0 {
+				// 高级功能：如果服务正常，直接在主页显示运行了几个隧道
+				return fmt.Sprintf("%s● Running (%d)%s", ColorGreen, runningCount, ColorReset)
+			}
+		}
+	}
+
+	// 3. 兜底检查：抛弃 pgrep，使用 Alpine 和所有 Linux 都完美支持的 pidof
+	cmd := exec.Command("pidof", "cloudflared")
 	if err := cmd.Run(); err == nil {
 		return fmt.Sprintf("%s● Running%s", ColorGreen, ColorReset)
 	}

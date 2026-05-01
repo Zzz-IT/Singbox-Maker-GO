@@ -504,21 +504,17 @@ WantedBy=multi-user.target
 		}
 	case "openrc":
 		servicePath := fmt.Sprintf("/etc/init.d/%s", serviceName)
-		// 修复：彻底抛弃 /bin/sh，使用原生 command 与 output_log
 		serviceContent := fmt.Sprintf(`#!/sbin/openrc-run
 description="Argo Tunnel for Port %d"
 command="/usr/local/bin/cloudflared"
 command_args="%s"
+command_env="GOMEMLIMIT=50MiB GOGC=50"
 supervisor="supervise-daemon"
 respawn_delay=5
 respawn_max=0
 pidfile="/run/%s.pid"
 output_log="%s"
 error_log="%s"
-
-# 原生注入环境变量，不污染 command
-export GOMEMLIMIT="50MiB"
-export GOGC="50"
 
 depend() {
     need net
