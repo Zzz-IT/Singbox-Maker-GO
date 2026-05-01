@@ -23,10 +23,11 @@ func DetectInitSystem() {
 
 // CheckServiceStatus 检查服务运行状态
 func CheckServiceStatus(serviceName string) bool {
-	if InitSystem == "systemd" {
+	switch InitSystem {
+	case "systemd":
 		cmd := exec.Command("systemctl", "is-active", "--quiet", serviceName)
 		return cmd.Run() == nil
-	} else if InitSystem == "openrc" {
+	case "openrc":
 		cmd := exec.Command("rc-service", serviceName, "status")
 		out, _ := cmd.CombinedOutput()
 		return strings.Contains(string(out), "started")
@@ -43,18 +44,20 @@ func ManageService(action string) {
 	// 如果动作是 restart 或 stop，第一步都是“优雅停止 + 强制补刀清理”
 	if action == "restart" || action == "stop" {
 		// 1. 尝试正常停止服务
-		if InitSystem == "systemd" {
+		switch InitSystem {
+		case "systemd":
 			exec.Command("systemctl", "stop", "sing-box").Run()
-		} else if InitSystem == "openrc" {
+		case "openrc":
 			exec.Command("rc-service", "sing-box", "stop").Run()
 		}
 
 		// 2. 深度清理：干掉所有残留进程、清掉锁文件、重置系统状态
 		exec.Command("pkill", "-9", "-f", "sing-box").Run()
 		os.Remove("/var/run/sing-box.pid")
-		if InitSystem == "openrc" {
+		switch InitSystem {
+		case "openrc":
 			exec.Command("rc-service", "sing-box", "zap").Run()
-		} else if InitSystem == "systemd" {
+		case "systemd":
 			exec.Command("systemctl", "reset-failed", "sing-box").Run()
 		}
 
@@ -69,10 +72,11 @@ func ManageService(action string) {
 		}
 	}
 
-	// 此时只会剩下 start 或 status 动作需要向系统发送指令
-	if InitSystem == "systemd" {
+	// 此时只会剩下 start 或 status 动作 need to 向系统发送指令
+	switch InitSystem {
+	case "systemd":
 		out, err = exec.Command("systemctl", action, "sing-box").CombinedOutput()
-	} else if InitSystem == "openrc" {
+	case "openrc":
 		out, err = exec.Command("rc-service", "sing-box", action).CombinedOutput()
 	}
 
@@ -85,9 +89,10 @@ func ManageService(action string) {
 	// 成功提示汉化
 	if originalAction != "status" {
 		actionName := originalAction
-		if originalAction == "start" {
+		switch originalAction {
+		case "start":
 			actionName = "启动"
-		} else if originalAction == "restart" {
+		case "restart":
 			actionName = "重启"
 		}
 		LogSuccess("sing-box 服务已%s", actionName)
@@ -122,7 +127,8 @@ func CheckArgoStatus() string {
 	}
 
 	// 2. 检查是否有进程在运行
-	cmd := exec.Command("pgrep", "-f", "cloudflared")
+	// 修复：将 -f 改为 -x (精确匹配进程名)，防止误命中残留脚本
+	cmd := exec.Command("pgrep", "-x", "cloudflared")
 	if err := cmd.Run(); err == nil {
 		return fmt.Sprintf("%s● Running%s", ColorGreen, ColorReset)
 	}

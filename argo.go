@@ -432,12 +432,13 @@ func DeleteArgoNode() {
 
 		// 2. 优雅停止并注销对应的 Argo 系统服务
 		serviceName := fmt.Sprintf("argo-%.0f", targetMeta["local_port"])
-		if InitSystem == "systemd" {
+		switch InitSystem {
+		case "systemd":
 			exec.Command("systemctl", "stop", serviceName).Run()
 			exec.Command("systemctl", "disable", serviceName).Run()
 			os.Remove(fmt.Sprintf("/etc/systemd/system/%s.service", serviceName))
 			exec.Command("systemctl", "daemon-reload").Run()
-		} else if InitSystem == "openrc" {
+		case "openrc":
 			exec.Command("rc-service", serviceName, "stop").Run()
 			exec.Command("rc-update", "del", serviceName, "default").Run()
 			os.Remove(fmt.Sprintf("/etc/init.d/%s", serviceName))
@@ -464,14 +465,18 @@ func DeleteArgoNode() {
 func createAndStartArgoService(port int, tunnelType string, token string, logFile string) error {
 	serviceName := fmt.Sprintf("argo-%d", port)
 	var cmdStr string
+	var argoArgs string // 新增：专为 OpenRC 准备的原生参数
 
 	if tunnelType == "fixed" {
 		cmdStr = fmt.Sprintf("%s tunnel run --token %s", CloudflaredBin, token)
+		argoArgs = fmt.Sprintf("tunnel run --token %s", token)
 	} else {
 		cmdStr = fmt.Sprintf("%s tunnel --url http://127.0.0.1:%d", CloudflaredBin, port)
+		argoArgs = fmt.Sprintf("tunnel --url http://127.0.0.1:%d", port)
 	}
 
-	if InitSystem == "systemd" {
+	switch InitSystem {
+	case "systemd":
 		servicePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
 		serviceContent := fmt.Sprintf(`[Unit]
 Description=Argo Tunnel for Port %d
@@ -497,29 +502,36 @@ WantedBy=multi-user.target
 		if err := exec.Command("systemctl", "restart", serviceName).Run(); err != nil {
 			return fmt.Errorf("systemd 启动失败: %v", err)
 		}
-	} else if InitSystem == "openrc" {
+	case "openrc":
 		servicePath := fmt.Sprintf("/etc/init.d/%s", serviceName)
+		// 修复：彻底抛弃 /bin/sh，使用原生 command 与 output_log
 		serviceContent := fmt.Sprintf(`#!/sbin/openrc-run
 description="Argo Tunnel for Port %d"
-command="/bin/sh"
-command_args="-c 'GOMEMLIMIT=50MiB GOGC=50 exec %s >> %s 2>&1'"
+command="/usr/local/bin/cloudflared"
+command_args="%s"
 supervisor="supervise-daemon"
 respawn_delay=5
 respawn_max=0
 pidfile="/run/%s.pid"
+output_log="%s"
+error_log="%s"
+
+# 原生注入环境变量，不污染 command
+export GOMEMLIMIT="50MiB"
+export GOGC="50"
 
 depend() {
     need net
     use dns
 }
-`, port, cmdStr, logFile, serviceName)
+`, port, argoArgs, serviceName, logFile, logFile)
 
 		os.WriteFile(servicePath, []byte(serviceContent), 0755)
 		exec.Command("rc-update", "add", serviceName, "default").Run()
 		if err := exec.Command("rc-service", serviceName, "restart").Run(); err != nil {
 			return fmt.Errorf("openrc 启动失败: %v", err)
 		}
-	} else {
+	default:
 		return fmt.Errorf("未知的初始化系统，无法创建服务")
 	}
 
@@ -556,9 +568,10 @@ func RestartAllArgoTunnels() {
 		}
 
 		var err error
-		if InitSystem == "systemd" {
+		switch InitSystem {
+		case "systemd":
 			err = exec.Command("systemctl", "restart", serviceName).Run()
-		} else if InitSystem == "openrc" {
+		case "openrc":
 			err = exec.Command("rc-service", serviceName, "restart").Run()
 		}
 
@@ -618,9 +631,10 @@ func StopAllArgoTunnels() {
 		port := int(meta["local_port"].(float64))
 		serviceName := fmt.Sprintf("argo-%d", port)
 
-		if InitSystem == "systemd" {
+		switch InitSystem {
+		case "systemd":
 			exec.Command("systemctl", "stop", serviceName).Run()
-		} else if InitSystem == "openrc" {
+		case "openrc":
 			exec.Command("rc-service", serviceName, "stop").Run()
 		}
 	}

@@ -30,9 +30,10 @@ func ViewLog() {
 	ClearScreen()
 	LogInfo("正在查看 sing-box 实时日志 (按 Ctrl+C 退出)...")
 	var cmd *exec.Cmd
-	if InitSystem == "systemd" {
+	switch InitSystem {
+	case "systemd":
 		cmd = exec.Command("journalctl", "-u", "sing-box", "-f", "--no-pager")
-	} else {
+	default:
 		cmd = exec.Command("tail", "-f", "/var/log/sing-box.log")
 	}
 	cmd.Stdout = os.Stdout
@@ -144,9 +145,10 @@ func Uninstall() {
 		return
 	}
 	ManageService("stop")
-	if InitSystem == "systemd" {
+	switch InitSystem {
+	case "systemd":
 		exec.Command("systemctl", "disable", "sing-box").Run()
-	} else if InitSystem == "openrc" {
+	case "openrc":
 		exec.Command("rc-update", "del", "sing-box", "default").Run()
 	}
 	os.RemoveAll("/usr/local/etc/sing-box")

@@ -50,7 +50,8 @@ func InitRuntime() {
 
 // GenerateServiceFiles 生成 Systemd 或 OpenRC 的服务卡片
 func GenerateServiceFiles() {
-	if InitSystem == "systemd" {
+	switch InitSystem {
+	case "systemd":
 		servicePath := "/etc/systemd/system/sing-box.service"
 		if _, err := os.Stat(servicePath); os.IsNotExist(err) {
 			content := `[Unit]
@@ -79,7 +80,7 @@ WantedBy=multi-user.target
 			exec.Command("systemctl", "enable", "sing-box").Run()
 			LogSuccess("Systemd 服务守护文件已生成")
 		}
-	} else if InitSystem == "openrc" {
+	case "openrc":
 		servicePath := "/etc/init.d/sing-box"
 		if _, err := os.Stat(servicePath); os.IsNotExist(err) {
 			content := `#!/sbin/openrc-run
