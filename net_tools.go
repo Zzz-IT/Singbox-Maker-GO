@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -53,23 +55,27 @@ func GetPublicIP() string {
 	return "127.0.0.1" // 最终兜底
 }
 
-// GenerateUUID 调用 sing-box 生成 UUID
+// GenerateUUID 原生生成 UUID，摆脱对 sing-box 外部命令的依赖，消除硬编码降级风险
 func GenerateUUID() string {
-	out, err := exec.Command("/usr/local/bin/sing-box", "generate", "uuid").Output()
-	if err != nil || len(out) == 0 {
-		// 优化 5：防崩溃兜底，避免生成空 uuid 导致 sing-box 启动报错
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
 		return "b0b0b0b0-b0b0-40b0-80b0-b0b0b0b0b0b0"
 	}
-	return strings.TrimSpace(string(out))
+	// UUID v4 规范
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
-// GenerateShortID 生成 8 位的 Hex 短 ID
+// GenerateShortID 原生生成 8 位 Hex 短 ID
 func GenerateShortID() string {
-	out, err := exec.Command("/usr/local/bin/sing-box", "generate", "rand", "--hex", "8").Output()
-	if err != nil || len(out) == 0 {
-		return "a1b2c3d4" // 兜底
+	b := make([]byte, 4) // 4 bytes = 8 hex chars
+	_, err := rand.Read(b)
+	if err != nil {
+		return "a1b2c3d4"
 	}
-	return strings.TrimSpace(string(out))
+	return fmt.Sprintf("%x", b)
 }
 
 // GenerateRealityKeyPair 生成 Reality 的公私钥对

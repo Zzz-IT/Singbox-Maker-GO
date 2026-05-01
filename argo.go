@@ -48,7 +48,7 @@ func StartArgoTunnel(port int, tunnelType string, token string) (string, error) 
 	// 预创建日志文件防止权限报错
 	if f, err := os.Create(logFile); err == nil {
 		f.Close()
-		os.Chmod(logFile, 0666)
+		os.Chmod(logFile, 0600)
 	}
 
 	// 1. 生成并启动系统服务
@@ -551,7 +551,7 @@ func RestartAllArgoTunnels() {
 			os.Remove(logFile)
 			if f, err := os.Create(logFile); err == nil {
 				f.Close()
-				os.Chmod(logFile, 0666)
+				os.Chmod(logFile, 0600)
 			}
 		}
 
